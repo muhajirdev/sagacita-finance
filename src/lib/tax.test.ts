@@ -5,7 +5,11 @@ import { computeTax } from './tax'
 describe('computeTax', () => {
   it('adds PPN 11% and withholds PPh 23 2%', () => {
     expect(computeTax({ dpp: 10_000_000, pphType: 'pph23' })).toEqual({
-      dpp: 10_000_000, ppn: 1_100_000, pphType: 'pph23', pph: 200_000, total: 10_900_000,
+      dpp: 10_000_000,
+      ppn: 1_100_000,
+      pphType: 'pph23',
+      pph: 200_000,
+      total: 10_900_000,
     })
   })
   it('skips PPN for non-PKP vendors', () => {

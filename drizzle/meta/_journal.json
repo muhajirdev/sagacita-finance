@@ -22,6 +22,13 @@
       "when": 1793871296339,
       "tag": "0002_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793873058146,
+      "tag": "0003_right_cerebro",
+      "breakpoints": true
     }
   ]
 }

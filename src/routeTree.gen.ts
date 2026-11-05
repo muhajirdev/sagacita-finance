@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
@@ -35,6 +36,11 @@ const McpRoute = McpRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppApprovalsRoute = AppApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPayablesRoute = AppPayablesRouteImport.update({
@@ -62,6 +68,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/approvals': typeof AppApprovalsRoute
   '/payables': typeof AppPayablesRoute
   '/transactions': typeof AppTransactionsRoute
   '/projects/$code': typeof AppProjectsCodeRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/approvals': typeof AppApprovalsRoute
   '/payables': typeof AppPayablesRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
@@ -81,6 +89,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/_app/approvals': typeof AppApprovalsRoute
   '/_app/payables': typeof AppPayablesRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
@@ -93,6 +102,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/mcp'
+    | '/approvals'
     | '/payables'
     | '/transactions'
     | '/projects/$code'
@@ -101,6 +111,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/mcp'
+    | '/approvals'
     | '/payables'
     | '/transactions'
     | '/'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/mcp'
+    | '/_app/approvals'
     | '/_app/payables'
     | '/_app/transactions'
     | '/_app/'
@@ -154,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/approvals': {
+      id: '/_app/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/payables': {
       id: '/_app/payables'
       path: '/payables'
@@ -186,6 +205,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppApprovalsRoute: typeof AppApprovalsRoute
   AppPayablesRoute: typeof AppPayablesRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -194,6 +214,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppApprovalsRoute: AppApprovalsRoute,
   AppPayablesRoute: AppPayablesRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,

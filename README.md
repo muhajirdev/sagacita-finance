@@ -23,7 +23,21 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | `record_transaction` | Client invoice, vendor bill, cash advance or reimbursement; PPN/PPh computed |
 | `set_transaction_status` | Approve, settle or void |
 | `record_payment` | Cash in or out against a transaction, partial allowed |
-| `create_project`, `add_budget_line` | Set up a project |
+| `create_project`, `add_budget_line` | Set up a project (starts as draft) |
+| `submit_budget` | Ask for approval of a draft project's budget lines; approval makes it active |
+| `list_approvals` | Approval queue; `unnotified: true` returns new requests once, for a WhatsApp routine |
+| `decide_approval` | Approve or reject (approve spend = payable, reject = void) |
+| `pnl_report` | Whole-year P&L in one call: totals, monthly series, per-project rows |
+
+### Approvals
+
+Outgoing spend recorded as `draft` opens a pending approval automatically. New projects start as `draft`;
+`submit_budget` asks for approval and approving makes the project `active`. One `approvals` table holds both
+(entity = project | transaction). On the web, only the `owner` role can decide; over MCP the token is shared,
+so restrict who may approve in Whip (e.g. only the owner's WhatsApp number).
+
+WhatsApp ping: a Whip routine every 10 minutes calls `list_approvals {unnotified: true}` and posts each
+summary with its id; the owner replies "approve 12" or "reject 12 reason" and the agent calls `decide_approval`.
 
 Every write takes an `actor` (e.g. `whatsapp:Rina`) and lands in `activity_log`.
 

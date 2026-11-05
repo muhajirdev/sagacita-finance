@@ -1,6 +1,6 @@
 import { Link, Outlet, createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 
-import { IconCalendar, IconFolder, IconHome, IconList, IconLogout } from '#/components/icons'
+import { IconCalendar, IconCheck, IconFolder, IconHome, IconList, IconLogout } from '#/components/icons'
 import { getMe, logout } from '#/server/fns'
 
 export const Route = createFileRoute('/_app')({
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/projects', label: 'Projects', icon: IconFolder },
   { to: '/transactions', label: 'Transactions', icon: IconList },
   { to: '/payables', label: 'Payment run', icon: IconCalendar },
+  { to: '/approvals', label: 'Approvals', icon: IconCheck },
 ] as const
 
 function Layout() {
@@ -72,7 +73,7 @@ function Layout() {
           <IconLogout />
         </button>
       </header>
-      <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-line bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {NAV.map(({ to, label, icon: Icon }) => (
           <Link
             key={to}

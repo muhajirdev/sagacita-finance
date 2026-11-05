@@ -3,10 +3,11 @@
  * Every write goes through here so tax math, budget checks and the activity log
  * are the same no matter who calls.
  */
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import {
   activityLog,
+  approvals,
   opexBudgets,
   budgetLines,
   companies,
@@ -134,6 +135,7 @@ export async function createProject(
       clientId: client.id,
       divisionId: input.divisionId,
       type: input.type,
+      status: 'draft',
       startDate: input.startDate || null,
       endDate: input.endDate || null,
     })
@@ -174,20 +176,12 @@ export async function projectBudget(db: Db, projectId: number) {
   const spend = await db
     .select({ lineId: transactions.budgetLineId, actual: sql<number>`coalesce(sum(${transactions.dpp}), 0)` })
     .from(transactions)
-    .where(
-      and(
-        eq(transactions.projectId, projectId),
-        eq(transactions.direction, 'out'),
-        sql`${transactions.status} != 'void'`,
-      ),
-    )
+    .where(and(eq(transactions.projectId, projectId), eq(transactions.direction, 'out'), sql`${transactions.status} != 'void'`))
     .groupBy(transactions.budgetLineId)
   const billed = await db
     .select({ total: sql<number>`coalesce(sum(${transactions.dpp}), 0)` })
     .from(transactions)
-    .where(
-      and(eq(transactions.projectId, projectId), eq(transactions.direction, 'in'), sql`${transactions.status} != 'void'`),
-    )
+    .where(and(eq(transactions.projectId, projectId), eq(transactions.direction, 'in'), sql`${transactions.status} != 'void'`))
     .get()
   const byLine = new Map(spend.map((s) => [s.lineId, Number(s.actual)]))
   const rows = lines.map((l) => {
@@ -264,8 +258,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
 
   if (input.budgetLineId) {
     const line = await db.select().from(budgetLines).where(eq(budgetLines.id, input.budgetLineId)).get()
-    if (!line || line.projectId !== project?.id)
-      throw new FinanceError('budget line does not belong to this project')
+    if (!line || line.projectId !== project?.id) throw new FinanceError('budget line does not belong to this project')
   }
   if (input.partyName) {
     const kind: PartyKind = direction === 'in' ? 'client' : input.kind === 'vendor_bill' ? 'vendor' : 'employee'
@@ -297,14 +290,28 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
     .returning()
   await log(db, actor, 'create', 'transactions', row.id, row)
 
-  let warning: string | null = null
+  let approval: typeof approvals.$inferSelect | null = null
+  if (row.direction === 'out' && row.status === 'draft') {
+    const who = input.partyName || input.category || 'company'
+    const where = project ? project.code : 'company spend'
+    approval = await requestApproval(db, actor, {
+      entity: 'transaction',
+      entityId: row.id,
+      amount: row.total,
+      summary: `${KIND_TEXT[row.kind]} ${who}, Rp ${row.total.toLocaleString('id-ID')} (${where})${row.description ? ': ' + row.description : ''}`,
+    })
+  }
+
+  let warning: string | null = project?.status === 'draft' ? `Project ${project.code} budget is not approved yet.` : null
   if (row.budgetLineId && project) {
     const budget = await projectBudget(db, project.id)
     const line = budget.lines.find((l) => l.id === row.budgetLineId)
     if (line && line.actual > line.ceiling)
-      warning = `Budget line "${line.name}" is now over its ceiling: spent Rp ${line.actual.toLocaleString('id-ID')} of Rp ${line.ceiling.toLocaleString('id-ID')}.`
+      warning =
+        (warning ? warning + ' ' : '') +
+        `Budget line "${line.name}" is now over its ceiling: spent Rp ${line.actual.toLocaleString('id-ID')} of Rp ${line.ceiling.toLocaleString('id-ID')}.`
   }
-  return { transaction: row, warning }
+  return { transaction: row, warning, approval }
 }
 
 export async function setTransactionStatus(db: Db, actor: Actor, id: number, status: TransactionStatus) {
@@ -315,6 +322,8 @@ export async function setTransactionStatus(db: Db, actor: Actor, id: number, sta
     .returning()
   if (!row) throw new FinanceError(`transaction ${id} not found`)
   await log(db, actor, 'update', 'transactions', id, { status })
+  if (status === 'approved' || status === 'void')
+    await closePending(db, actor, 'transaction', id, status === 'approved' ? 'approved' : 'rejected')
   return row
 }
 
@@ -331,7 +340,15 @@ async function paidSoFar(db: Db, transactionId: number) {
 export async function recordPayment(
   db: Db,
   actor: Actor,
-  input: { transactionId: number; amount?: number; date?: string; method?: string; reference?: string; note?: string; createdBy?: number | null },
+  input: {
+    transactionId: number
+    amount?: number
+    date?: string
+    method?: string
+    reference?: string
+    note?: string
+    createdBy?: number | null
+  },
 ) {
   const tx = await db.select().from(transactions).where(eq(transactions.id, input.transactionId)).get()
   if (!tx) throw new FinanceError(`transaction ${input.transactionId} not found`)
@@ -356,6 +373,115 @@ export async function recordPayment(
     .returning()
   await log(db, actor, 'pay', 'transactions', tx.id, row)
   return { payment: row, outstanding: outstanding - amount }
+}
+
+// ------------------------------------------------------------------ approvals
+
+const KIND_TEXT: Record<string, string> = {
+  client_invoice: 'Client invoice',
+  vendor_bill: 'Vendor bill',
+  cash_advance: 'Cash advance',
+  reimbursement: 'Reimbursement',
+}
+
+type ApprovalEntity = (typeof approvals.$inferSelect)['entity']
+
+/** Opens an approval request, or returns the pending one already open for the same thing. */
+export async function requestApproval(
+  db: Db,
+  actor: Actor,
+  input: { entity: ApprovalEntity; entityId: number; summary: string; amount?: number; note?: string },
+) {
+  const open = await db
+    .select()
+    .from(approvals)
+    .where(and(eq(approvals.entity, input.entity), eq(approvals.entityId, input.entityId), eq(approvals.status, 'pending')))
+    .get()
+  if (open) return open
+  const [row] = await db
+    .insert(approvals)
+    .values({ ...input, amount: input.amount ?? 0, note: input.note ?? null, requestedBy: actor })
+    .returning()
+  await log(db, actor, 'create', 'approvals', row.id, row)
+  return row
+}
+
+async function closePending(db: Db, actor: Actor, entity: ApprovalEntity, entityId: number, status: 'approved' | 'rejected') {
+  await db
+    .update(approvals)
+    .set({ status, decidedBy: actor, decidedAt: new Date().toISOString() })
+    .where(and(eq(approvals.entity, entity), eq(approvals.entityId, entityId), eq(approvals.status, 'pending')))
+}
+
+/** Asks for the project's budget (its budget lines) to be approved before the project runs. */
+export async function submitBudget(db: Db, actor: Actor, project: string | number, note?: string) {
+  const p = await findProject(db, project)
+  if (p.status !== 'draft') throw new FinanceError(`project ${p.code} is ${p.status}; only draft projects need budget approval`)
+  const budget = await projectBudget(db, p.id)
+  if (budget.lines.length === 0) throw new FinanceError('add budget lines before asking for approval')
+  const t = budget.totals
+  return requestApproval(db, actor, {
+    entity: 'project',
+    entityId: p.id,
+    amount: t.ceiling,
+    note,
+    summary: `Budget ${p.code} ${p.name}: ${budget.lines.length} lines, charge Rp ${t.charge.toLocaleString('id-ID')}, expense ceiling Rp ${t.ceiling.toLocaleString('id-ID')}, est. margin Rp ${(t.charge - t.ceiling).toLocaleString('id-ID')}`,
+  })
+}
+
+/** Approve: transaction -> approved, project -> active. Reject: transaction -> void, project stays draft. */
+export async function decideApproval(db: Db, actor: Actor, id: number, decision: 'approve' | 'reject', note?: string) {
+  const a = await db.select().from(approvals).where(eq(approvals.id, id)).get()
+  if (!a) throw new FinanceError(`approval ${id} not found`)
+  if (a.status !== 'pending') throw new FinanceError(`approval ${id} is already ${a.status} by ${a.decidedBy}`)
+  const status = decision === 'approve' ? 'approved' : 'rejected'
+  const [row] = await db
+    .update(approvals)
+    .set({ status, decidedBy: actor, decidedAt: new Date().toISOString(), note: note ?? a.note })
+    .where(eq(approvals.id, id))
+    .returning()
+  await log(db, actor, decision, 'approvals', id, { note })
+  if (a.entity === 'transaction') {
+    const tx = await db.select().from(transactions).where(eq(transactions.id, a.entityId)).get()
+    if (tx && tx.status === 'draft') {
+      const next = decision === 'approve' ? 'approved' : 'void'
+      await db.update(transactions).set({ status: next, updatedAt: new Date().toISOString() }).where(eq(transactions.id, tx.id))
+      await log(db, actor, 'update', 'transactions', tx.id, { status: next, approval: id })
+    }
+  } else if (decision === 'approve') {
+    await db
+      .update(projects)
+      .set({ status: 'active' })
+      .where(and(eq(projects.id, a.entityId), eq(projects.status, 'draft')))
+    await log(db, actor, 'update', 'projects', a.entityId, { status: 'active', approval: id })
+  }
+  return row
+}
+
+/**
+ * Approval queue. unnotified=true returns only pending requests not yet posted to WhatsApp
+ * and marks them posted, so a routine can call it every few minutes without repeats.
+ */
+export async function listApprovals(
+  db: Db,
+  f: { status?: 'pending' | 'approved' | 'rejected'; unnotified?: boolean; limit?: number } = {},
+) {
+  const where = f.unnotified
+    ? and(eq(approvals.status, 'pending'), isNull(approvals.notifiedAt))
+    : f.status
+      ? eq(approvals.status, f.status)
+      : undefined
+  const rows = await db
+    .select()
+    .from(approvals)
+    .where(where)
+    .orderBy(desc(approvals.id))
+    .limit(Math.min(f.limit ?? 50, 200))
+  if (f.unnotified && rows.length) {
+    const now = new Date().toISOString()
+    for (const r of rows) await db.update(approvals).set({ notifiedAt: now }).where(eq(approvals.id, r.id))
+  }
+  return rows
 }
 
 // ------------------------------------------------------------------ reads over the view
@@ -413,7 +539,10 @@ export async function listTransactions(d1: D1Database, f: TransactionFilter = {}
   const q = `select * from v_transactions ${where.length ? 'where ' + where.join(' and ') : ''}
     order by coalesce(due_date, issue_date) desc, id desc limit ?`
   args.push(Math.min(f.limit ?? 200, 1000))
-  const { results } = await d1.prepare(q).bind(...args).all<TransactionRow>()
+  const { results } = await d1
+    .prepare(q)
+    .bind(...args)
+    .all<TransactionRow>()
   return results
 }
 
@@ -431,9 +560,90 @@ export async function payablesDue(d1: D1Database, dueBy: string) {
   return { items: results, totalOutstanding: results.reduce((a, r) => a + r.outstanding, 0) }
 }
 
+/**
+ * Profit and loss for a year in one call (for dashboards, so they don't fan out into many queries).
+ * Cost = DPP of non-void outgoing rows (before tax). Project cost has a project; OpEx has none.
+ * Payroll is not included (payroll_months is owner/hr only).
+ */
+export async function pnlReport(d1: D1Database, year: number) {
+  const y = String(year)
+  const monthly = (
+    await d1
+      .prepare(
+        `select substr(issue_date, 1, 7) as month,
+           sum(case when direction = 'in' then dpp else 0 end) as billed,
+           sum(case when direction = 'out' and project_id is not null then dpp else 0 end) as project_cost,
+           sum(case when direction = 'out' and project_id is null then dpp else 0 end) as opex
+         from v_transactions where status != 'void' and substr(issue_date, 1, 4) = ?
+         group by month order by month`,
+      )
+      .bind(y)
+      .all<{ month: string; billed: number; project_cost: number; opex: number }>()
+  ).results
+  const collected = await d1
+    .prepare(`select coalesce(sum(amount), 0) as v from payments where direction = 'in' and substr(date, 1, 4) = ?`)
+    .bind(y)
+    .first<{ v: number }>()
+  const projectRows = (
+    await d1
+      .prepare(
+        `select p.id, p.code, p.name, p.status, c.name as client, d.name as division,
+           (select coalesce(sum(charge), 0) from budget_lines b where b.project_id = p.id) as contract,
+           (select coalesce(sum(max_expense + asf_amount), 0) from budget_lines b where b.project_id = p.id) as budget,
+           (select coalesce(sum(dpp), 0) from transactions t where t.project_id = p.id and t.direction = 'out' and t.status != 'void') as cost,
+           (select coalesce(sum(dpp), 0) from transactions t where t.project_id = p.id and t.direction = 'in' and t.status != 'void') as billed
+         from projects p join parties c on c.id = p.client_id join divisions d on d.id = p.division_id
+         where coalesce(substr(p.start_date, 1, 4), ?) <= ? and coalesce(substr(p.end_date, 1, 4), ?) >= ?
+         order by p.code`,
+      )
+      .bind(y, y, y, y)
+      .all<{
+        id: number
+        code: string
+        name: string
+        status: string
+        client: string
+        division: string
+        contract: number
+        budget: number
+        cost: number
+        billed: number
+      }>()
+  ).results
+  const projects = projectRows.map((p) => ({
+    ...p,
+    margin: p.contract - p.cost,
+    marginPct: p.contract ? Math.round(((p.contract - p.cost) / p.contract) * 1000) / 10 : 0,
+  }))
+  const sum = (k: 'contract' | 'cost' | 'billed') => projects.reduce((a, p) => a + p[k], 0)
+  const opex = monthly.reduce((a, m) => a + m.opex, 0)
+  const contract = sum('contract')
+  const projectCost = sum('cost')
+  const grossProfit = contract - projectCost
+  return {
+    year,
+    totals: {
+      contract,
+      projectCost,
+      grossProfit,
+      grossMarginPct: contract ? Math.round((grossProfit / contract) * 1000) / 10 : 0,
+      opex,
+      operatingProfit: grossProfit - opex,
+      billed: sum('billed'),
+      collected: collected?.v ?? 0,
+      projects: projects.length,
+      activeProjects: projects.filter((p) => p.status === 'active').length,
+    },
+    monthly,
+    projects,
+    notes: 'Amounts in rupiah, before PPN. Cost = DPP of non-void spend. OpEx = spend with no project. Payroll not included.',
+  }
+}
+
 // ------------------------------------------------------------------ read-only SQL for the agent
 
-const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint)\b/i
+const FORBIDDEN =
+  /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint)\b/i
 
 /** Runs one read-only SELECT. Users (password hashes) and payroll (owner/hr only) cannot be read. */
 export async function readonlyQuery(d1: D1Database, query: string, limit = 500) {

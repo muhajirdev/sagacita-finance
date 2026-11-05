@@ -24,6 +24,10 @@ import {
   recordPayment,
   recordTransaction,
   setTransactionStatus,
+  decideApproval,
+  listApprovals,
+  pnlReport,
+  submitBudget,
 } from '#/lib/finance'
 
 const SCHEMA_GUIDE = `Sagacita Finance data model (SQLite / Cloudflare D1). Money is integer rupiah. Dates are YYYY-MM-DD.
@@ -45,6 +49,8 @@ Tables:
   divisions     agencies (Sagacita PR, SagaDigital, Arra Comms) -> company_id
   companies     PTs (tax reporting is per company)
   opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
+  approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
+                requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
   activity_log  who changed what: at, actor, action, entity, entity_id, data (json)
   (payroll_months and users exist but are not readable here)
 
@@ -52,7 +58,9 @@ Rules:
   actual spend of a budget line = sum(dpp) of non-void 'out' transactions on it (cost before tax)
   margin = charge - actual spend
   payment run = approved, direction 'out', outstanding > 0, due by the run date (tool: payables_due)
-  void rows are ignored everywhere.`
+  void rows are ignored everywhere.
+  approvals: outgoing spend recorded as draft opens a pending approval automatically; new projects start draft and need
+  submit_budget then approval to become active. Approving spend makes it payable; rejecting voids it.`
 
 const text = (data: unknown) => ({
   content: [{ type: 'text' as const, text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
@@ -67,10 +75,7 @@ async function safe(fn: () => Promise<unknown>) {
   }
 }
 
-const actorField = z
-  .string()
-  .min(1)
-  .describe('Who asked, e.g. "whatsapp:Rina". Stored in the activity log.')
+const actorField = z.string().min(1).describe('Who asked, e.g. "whatsapp:Rina". Stored in the activity log.')
 
 function createServer(env: Env, appUrl: string) {
   const link = {
@@ -102,7 +107,11 @@ function createServer(env: Env, appUrl: string) {
 
   server.registerTool(
     'list_reference',
-    { description: 'Companies (PTs), divisions and this year\'s company OpEx categories, with ids. Needed by create_project and company spend.', inputSchema: {} },
+    {
+      description:
+        "Companies (PTs), divisions and this year's company OpEx categories, with ids. Needed by create_project and company spend.",
+      inputSchema: {},
+    },
     async () =>
       safe(async () => ({
         companies: await listCompanies(db),
@@ -113,7 +122,10 @@ function createServer(env: Env, appUrl: string) {
 
   server.registerTool(
     'list_projects',
-    { description: 'All projects with client, division and budget totals (charge, ceiling, actual, remaining, % used, margin).', inputSchema: {} },
+    {
+      description: 'All projects with client, division and budget totals (charge, ceiling, actual, remaining, % used, margin).',
+      inputSchema: {},
+    },
     async () => safe(async () => (await listProjects(db)).map((p) => ({ ...p, url: link.project(p.code) }))),
   )
 
@@ -144,7 +156,8 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Record a client invoice, vendor bill, cash advance or reimbursement. PPN (11%) and PPh are computed from dpp. ' +
-        'Confirm the details with the person before calling. Returns a warning when a budget line goes over its ceiling.',
+        'Confirm the details with the person before calling. Returns a warning when a budget line goes over its ceiling. ' +
+        'Outgoing spend left as draft opens a pending approval (returned as `approval`); tell the person it is waiting for approval.',
       inputSchema: {
         actor: actorField,
         kind: z.enum(TRANSACTION_KINDS),
@@ -205,7 +218,9 @@ function createServer(env: Env, appUrl: string) {
   server.registerTool(
     'create_project',
     {
-      description: 'Create a project. The client is created if new. Get divisionId from list_reference.',
+      description:
+        'Create a project (starts as draft). The client is created if new. Get divisionId from list_reference. ' +
+        'Then add budget lines and call submit_budget so the owner can approve it.',
       inputSchema: {
         actor: actorField,
         code: z.string().min(1),
@@ -235,6 +250,63 @@ function createServer(env: Env, appUrl: string) {
     },
     async ({ actor, project, ...input }) =>
       safe(async () => addBudgetLine(db, actor, { ...input, projectId: (await findProject(db, project)).id })),
+  )
+
+  server.registerTool(
+    'submit_budget',
+    {
+      description: "Ask for approval of a draft project's budget (its budget lines). Approving it makes the project active.",
+      inputSchema: { actor: actorField, project: z.string().describe('Project code or id'), note: z.string().optional() },
+    },
+    async ({ actor, project, note }) => safe(() => submitBudget(db, actor, project, note)),
+  )
+
+  server.registerTool(
+    'list_approvals',
+    {
+      description:
+        'The approval queue (budgets and spend). Default: pending ones. ' +
+        'unnotified=true returns only new pending requests not yet posted to WhatsApp and marks them posted; ' +
+        'use it from a routine and post each summary with its id, asking for "approve <id>" or "reject <id> <reason>".',
+      inputSchema: {
+        status: z.enum(['pending', 'approved', 'rejected']).optional(),
+        unnotified: z.boolean().optional(),
+        limit: z.number().int().positive().optional(),
+      },
+    },
+    async ({ status, unnotified, limit }) =>
+      safe(async () => ({
+        url: `${appUrl}/approvals`,
+        approvals: await listApprovals(db, { status: unnotified ? undefined : (status ?? 'pending'), unnotified, limit }),
+      })),
+  )
+
+  server.registerTool(
+    'decide_approval',
+    {
+      description:
+        'Approve or reject a pending approval. Only call this when the approver themselves said so (e.g. the owner replied "approve 12"). ' +
+        'Approving spend makes it payable; rejecting voids it. Approving a budget makes the project active.',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int(),
+        decision: z.enum(['approve', 'reject']),
+        note: z.string().optional().describe('Reason, required in practice for a reject'),
+      },
+    },
+    async ({ actor, id, decision, note }) => safe(() => decideApproval(db, actor, id, decision, note)),
+  )
+
+  server.registerTool(
+    'pnl_report',
+    {
+      description:
+        'Profit and loss for a year in ONE call: totals (contract, project cost, gross profit, OpEx, operating profit, billed, collected), ' +
+        'a monthly series (billed, project_cost, opex) and one row per project (contract, budget, cost, margin, billed). ' +
+        'Use this for P&L dashboards instead of many query calls.',
+      inputSchema: { year: z.number().int().optional().describe('Default: this year') },
+    },
+    async ({ year }) => safe(() => pnlReport(env.DB, year ?? new Date().getFullYear())),
   )
 
   return server

@@ -3,7 +3,7 @@ import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { TransactionForm, TransactionTable } from '#/components/transactions'
 import { PageHeader, Section, StatusPill, UsageBar } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
-import { addBudgetLineFn, getProject } from '#/server/fns'
+import { addBudgetLineFn, getProject, submitBudgetFn } from '#/server/fns'
 
 export const Route = createFileRoute('/_app/projects/$code')({
   loader: ({ params }) => getProject({ data: { code: params.code } }),
@@ -25,7 +25,31 @@ function ProjectPage() {
       <Link to="/projects" className="mb-3 inline-block text-[13px] font-medium text-accent">
         ‹ Projects
       </Link>
-      <PageHeader eyebrow={project.code} title={project.name} right={<StatusPill status={project.status} />} />
+      <PageHeader
+        eyebrow={project.code}
+        title={project.name}
+        right={
+          <div className="flex items-center gap-3">
+            <StatusPill status={project.status} />
+            {project.status === 'draft' && (
+              <button
+                className="btn"
+                onClick={async () => {
+                  try {
+                    await submitBudgetFn({ data: { projectId: project.id } })
+                    alert('Sent for approval')
+                    await router.invalidate()
+                  } catch (e) {
+                    alert(e instanceof Error ? e.message : String(e))
+                  }
+                }}
+              >
+                Ask for budget approval
+              </button>
+            )}
+          </div>
+        }
+      />
       <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {kpis.map((k) => (
           <div key={k.label} className="card p-5">

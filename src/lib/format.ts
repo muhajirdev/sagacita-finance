@@ -1,5 +1,4 @@
-export const rp = (n: number | null | undefined) =>
-  'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID')
+export const rp = (n: number | null | undefined) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID')
 
 export const rpShort = (n: number) => {
   const a = Math.abs(n)

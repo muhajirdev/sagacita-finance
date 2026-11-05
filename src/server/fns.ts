@@ -22,6 +22,9 @@ import {
   recordPayment,
   recordTransaction,
   setTransactionStatus,
+  decideApproval,
+  listApprovals,
+  submitBudget,
 } from '#/lib/finance'
 
 async function currentUser() {
@@ -47,8 +50,7 @@ export const login = createServerFn({ method: 'POST' })
   .validator(z.object({ email: z.string().email(), password: z.string().min(1) }))
   .handler(async ({ data }) => {
     const user = await getDb().select().from(users).where(eq(users.email, data.email.toLowerCase())).get()
-    if (!user || !(await verifyPassword(data.password, user.passwordHash)))
-      return { ok: false as const, error: 'Wrong email or password' }
+    if (!user || !(await verifyPassword(data.password, user.passwordHash))) return { ok: false as const, error: 'Wrong email or password' }
     setCookie(SESSION_COOKIE, await signSession(user.id, env.SESSION_SECRET), {
       httpOnly: true,
       secure: true,
@@ -202,4 +204,26 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     return recordPayment(getDb(), user.email, { ...data, createdBy: user.id })
+  })
+
+export const getApprovals = createServerFn()
+  .validator(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    return { canDecide: user.role === 'owner', approvals: await listApprovals(getDb(), { status: data.status ?? 'pending', limit: 100 }) }
+  })
+
+export const decideApprovalFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.number().int(), decision: z.enum(['approve', 'reject']), note: z.string().optional() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    if (user.role !== 'owner') throw new Error('Only the owner can approve or reject')
+    return decideApproval(getDb(), user.email, data.id, data.decision, data.note)
+  })
+
+export const submitBudgetFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ projectId: z.number().int() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    return submitBudget(getDb(), user.email, data.projectId)
   })

@@ -44,6 +44,7 @@ payments      (cash that moved; partial payment = several rows)
   transaction_id, direction, amount, date, method, reference
 opex_budgets  (company OpEx: category, fiscal_year, annual_budget, is_fixed)
 payroll_months (period, division, net_salary, bpjs_tk, bpjs_kes, pph21; owner/hr only)
+approvals     (entity project|transaction, entity_id, status pending|approved|rejected, summary, amount, requested_by, decided_by, notified_at)
 activity_log  (who changed what)
 users
 ```

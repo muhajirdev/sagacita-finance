@@ -217,6 +217,36 @@ export const payments = sqliteTable(
   (t) => [index('payments_transaction').on(t.transactionId), index('payments_date').on(t.date)],
 )
 
+// ---------------------------------------------------------------- approvals
+
+export const APPROVAL_ENTITIES = ['project', 'transaction'] as const
+export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const
+
+/**
+ * One generic approval queue. A row points at what needs a yes/no:
+ *   project      = its budget (budget lines) before the project runs; approve -> project active
+ *   transaction  = an outgoing bill / advance / reimbursement; approve -> transaction approved, reject -> void
+ * notified_at is set once the request has been posted to WhatsApp.
+ */
+export const approvals = sqliteTable(
+  'approvals',
+  {
+    id: id(),
+    entity: text('entity', { enum: APPROVAL_ENTITIES }).notNull(),
+    entityId: integer('entity_id').notNull(),
+    status: text('status', { enum: APPROVAL_STATUSES }).notNull().default('pending'),
+    summary: text('summary').notNull(), // one line a person can decide on, e.g. "Vendor bill PT X, Rp 25.000.000, Honda Brio / Produksi"
+    amount: integer('amount').notNull().default(0),
+    requestedBy: text('requested_by').notNull(),
+    requestedAt: createdAt(),
+    decidedBy: text('decided_by'),
+    decidedAt: text('decided_at'),
+    note: text('note'),
+    notifiedAt: text('notified_at'),
+  },
+  (t) => [index('approvals_status').on(t.status), index('approvals_entity').on(t.entity, t.entityId)],
+)
+
 // ---------------------------------------------------------------- audit
 
 /** Who changed what, from where. Written by every mutation (web and MCP). */

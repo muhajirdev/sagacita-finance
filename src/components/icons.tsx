@@ -40,3 +40,9 @@ export const IconLogout = () => (
     <path d="M10 8l-4 4 4 4M6 12h10" />
   </svg>
 )
+export const IconCheck = () => (
+  <svg {...base}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m8 12.5 2.5 2.5L16 9.5" />
+  </svg>
+)
