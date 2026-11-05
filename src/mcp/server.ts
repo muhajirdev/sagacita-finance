@@ -14,6 +14,8 @@ import {
   addBudgetLine,
   createProject,
   findProject,
+  setOpexBudget,
+  updateProject,
   listCompanies,
   listDivisions,
   listOpexCategories,
@@ -399,6 +401,47 @@ function createServer(env: Env, appUrl: string) {
       inputSchema: { actor: actorField, project: z.string(), status: z.enum(['active', 'closed']) },
     },
     async ({ actor, project, status }) => safe(() => setProjectStatus(db, actor, project, status)),
+  )
+
+  server.registerTool(
+    'update_project',
+    {
+      description:
+        'Edit a project: project number (code), name, client, division (agency), type, start/end dates. Pass only what changes. ' +
+        'Changing the budget itself is update_budget_line / add_budget_line.',
+      inputSchema: {
+        actor: actorField,
+        project: z.string().describe('Project code or id'),
+        code: z.string().optional(),
+        name: z.string().optional(),
+        clientName: z.string().optional().describe('Client name; created if new'),
+        divisionId: z.number().int().optional().describe('From list_reference'),
+        type: z.enum(PROJECT_TYPES).optional(),
+        startDate: z.string().nullable().optional(),
+        endDate: z.string().nullable().optional(),
+      },
+    },
+    async ({ actor, project, ...input }) =>
+      safe(async () => {
+        const p = await findProject(db, project)
+        const row = await updateProject(db, actor, p.id, input)
+        return { project: row, link: link.project(row.code) }
+      }),
+  )
+
+  server.registerTool(
+    'set_opex_budget',
+    {
+      description:
+        'Set the annual budget of a Company OpEx category for a year (adds the category if it is new). Read current budgets with query on opex_budgets.',
+      inputSchema: {
+        actor: actorField,
+        category: z.string().min(1),
+        year: z.number().int(),
+        annualBudget: z.number().nonnegative().describe('Rupiah'),
+      },
+    },
+    async ({ actor, ...input }) => safe(() => setOpexBudget(db, actor, input)),
   )
 
   server.registerTool(

@@ -16,6 +16,7 @@ import {
   listProjects,
   listTransactions,
   updateBudgetLine,
+  setOpexBudget,
   updateProject,
   updateTransaction,
 } from '#/lib/finance'
@@ -284,12 +285,8 @@ export const getCompanyOpex = createServerFn()
 export const setOpexBudgetFn = createServerFn({ method: 'POST' })
   .validator(z.object({ category: z.string().min(1), year: z.number().int(), annualBudget: z.number().nonnegative() }))
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
-    await getDb()
-      .insert(opexBudgets)
-      .values({ category: data.category.trim(), fiscalYear: data.year, annualBudget: Math.round(data.annualBudget) })
-      .onConflictDoUpdate({ target: [opexBudgets.category, opexBudgets.fiscalYear], set: { annualBudget: Math.round(data.annualBudget) } })
-    return { ok: true }
+    const user = await requireRole('owner', 'finance')
+    return setOpexBudget(getDb(), user.email, data)
   })
 
 // ------------------------------------------------------------ clients

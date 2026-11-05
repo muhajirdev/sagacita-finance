@@ -284,6 +284,20 @@ export async function deleteBudgetLine(db: Db, actor: Actor, id: number) {
 }
 
 /** Close or reopen a project. Draft -> active only happens through budget approval. */
+/** Set a Company OpEx category's annual budget for a year (creates the category if new). */
+export async function setOpexBudget(db: Db, actor: Actor, input: { category: string; year: number; annualBudget: number }) {
+  const category = input.category.trim()
+  if (!category) throw new FinanceError('category is required')
+  const annualBudget = Math.round(input.annualBudget)
+  const [row] = await db
+    .insert(opexBudgets)
+    .values({ category, fiscalYear: input.year, annualBudget })
+    .onConflictDoUpdate({ target: [opexBudgets.category, opexBudgets.fiscalYear], set: { annualBudget } })
+    .returning()
+  await log(db, actor, 'update', 'opex_budgets', row.id, { category, year: input.year, annualBudget })
+  return row
+}
+
 export async function setProjectStatus(db: Db, actor: Actor, project: string | number, status: 'active' | 'closed') {
   const p = await findProject(db, project)
   if (p.status === 'draft') throw new FinanceError(`project ${p.code} is draft; its budget must be approved first (submit_budget)`)
