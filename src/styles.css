@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #1f6b52;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+body { @apply bg-stone-50 text-stone-900 antialiased; }
+.input { @apply w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm focus:outline-2 focus:outline-brand; }
+.btn { @apply rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50; }
+.btn-ghost { @apply rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-stone-100; }
+.card { @apply rounded-lg border border-stone-200 bg-white; }
+.th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-stone-500; }
+.td { @apply border-t border-stone-100 px-3 py-2 text-sm; }
+.num { @apply text-right tabular-nums whitespace-nowrap; }

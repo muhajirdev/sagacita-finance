@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sagacita-finance",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sagacita-finance",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "drizzle"
+    }
+  ]
+  // Secrets (wrangler secret put): SESSION_SECRET, MCP_TOKEN
+}

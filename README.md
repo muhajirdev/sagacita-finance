@@ -1,0 +1,52 @@
+# Sagacita Finance
+
+Budget control and finance for Sagacita Group, built to be run mainly by an AI
+agent over MCP (WhatsApp through Whip). The web UI is a thin view on the same data.
+
+TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
+
+- Data model and the audit of the old Supabase app: [docs/schema.md](./docs/schema.md)
+- Schema: `src/db/schema.ts`. Migrations: `drizzle/` (`pnpm db:generate` after schema changes; never hand-edit generated SQL)
+- All money logic: `src/lib/finance.ts` and `src/lib/tax.ts`, shared by the UI and MCP
+- MCP server: `src/mcp/server.ts`, served at `/mcp` with `Authorization: Bearer <MCP_TOKEN>`
+
+## MCP tools
+
+| Tool | What it does |
+|---|---|
+| `describe_schema` | Tables, the `v_transactions` view and the money rules |
+| `query` | One read-only SELECT over everything (users table hidden) |
+| `list_reference` | Companies and divisions with ids |
+| `list_projects` | Projects with budget totals |
+| `project_budget` | Budget vs actual per budget line |
+| `payables_due` | Approved unpaid outgoing items due by a date (payment run) |
+| `record_transaction` | Client invoice, vendor bill, cash advance or reimbursement; PPN/PPh computed |
+| `set_transaction_status` | Approve, settle or void |
+| `record_payment` | Cash in or out against a transaction, partial allowed |
+| `create_project`, `add_budget_line` | Set up a project |
+
+Every write takes an `actor` (e.g. `whatsapp:Rina`) and lands in `activity_log`.
+
+## Develop
+
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars
+pnpm db:migrate:local
+pnpm user:create you@example.com secret "Your Name" owner
+pnpm dev          # http://localhost:3000
+pnpm test && pnpm typecheck
+```
+
+## Deploy
+
+```bash
+npx wrangler d1 create sagacita-finance     # once; put the id in wrangler.jsonc
+pnpm db:migrate:remote
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put MCP_TOKEN
+pnpm deploy
+pnpm user:create you@example.com secret "Your Name" owner --remote
+```
+
+Then add the MCP server in Whip as a custom connector: `https://<worker>/mcp` with the `MCP_TOKEN` as bearer.
