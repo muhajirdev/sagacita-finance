@@ -692,6 +692,7 @@ export type TransactionRow = {
   category: string | null
   description: string | null
   requested_by: string | null
+  attachment_url: string | null
   source: string
   company: string
   division: string | null
