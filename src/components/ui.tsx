@@ -100,21 +100,7 @@ export function Tabs<T extends string>({
 }
 
 /** A centred sheet for create / edit forms. */
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-30 grid place-items-center bg-black/25 p-4" onClick={onClose}>
-      <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[17px] font-semibold">{title}</h3>
-          <button className="text-[20px] leading-none text-muted hover:text-ink" onClick={onClose}>
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
+export { Modal } from '#/components/dialogs'
 
 export const fdate = (d: string | null | undefined) =>
   d

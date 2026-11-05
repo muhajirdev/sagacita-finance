@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { PageHeader, StatusPill } from '#/components/ui'
 import { rp } from '#/lib/format'
 import { decideApprovalFn, getApprovals } from '#/server/fns'
+import { ui } from '#/components/dialogs'
 
 const search = z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() })
 
@@ -23,13 +24,17 @@ function Approvals() {
   const navigate = Route.useNavigate()
   const router = useRouter()
   const decide = async (id: number, decision: 'approve' | 'reject') => {
-    const note = decision === 'reject' ? prompt('Reason for rejecting?') : undefined
-    if (decision === 'reject' && !note) return
+    let note: string | undefined
+    if (decision === 'reject') {
+      const v = await ui.prompt('Reject request', [{ name: 'note', label: 'Reason' }], { submitLabel: 'Reject' })
+      if (!v) return
+      note = v.note
+    }
     try {
       await decideApprovalFn({ data: { id, decision, note: note ?? undefined } })
       await router.invalidate()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      ui.error(e)
     }
   }
   return (

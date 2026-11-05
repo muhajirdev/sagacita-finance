@@ -17,6 +17,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@base-ui/react": "1.8.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-start": "^1.169.4",

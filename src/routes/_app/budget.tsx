@@ -6,6 +6,7 @@ import { HealthBadge, Modal, PageHeader, StatusPill, pct } from '#/components/ui
 import { rp } from '#/lib/format'
 import { addBudgetLineFn, getProject, getProjects, submitBudgetFn } from '#/server/fns'
 import { updateBudgetLineFn } from '#/server/pages'
+import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/budget')({
   validateSearch: z.object({ project: z.string().optional() }),
@@ -29,18 +30,15 @@ function Budget() {
         title="Budget Control"
         sub="SOW items per project: charge to the client, max expense, ASF, and actual spend against the ceiling."
         right={
-          <select
-            className="input w-auto max-w-full"
+          <Select
+            className="w-auto max-w-[min(420px,100%)]"
             value={project ?? ''}
-            onChange={(e) => navigate({ search: { project: e.target.value || undefined } })}
-          >
-            <option value="">All projects (overview)</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.code}>
-                {p.code} — {p.client} {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => navigate({ search: { project: v || undefined } })}
+            options={[
+              { value: '', label: 'All projects (overview)' },
+              ...projects.map((p) => ({ value: p.code, label: `${p.code} — ${p.client} ${p.name}` })),
+            ]}
+          />
         }
       />
       {detail ? <Detail d={detail} /> : <Overview projects={projects} />}
@@ -110,9 +108,9 @@ function Detail({ d }: { d: Awaited<ReturnType<typeof getProject>> }) {
               onClick={async () => {
                 try {
                   await submitBudgetFn({ data: { projectId: project.id } })
-                  alert('Budget sent for approval')
+                  ui.toast('Budget sent for approval')
                 } catch (e) {
-                  alert(e instanceof Error ? e.message : String(e))
+                  ui.error(e)
                 }
               }}
             >
@@ -250,7 +248,7 @@ function SowForm({
           try {
             if (line) {
               const r = await updateBudgetLineFn({ data: { id: line.id, ...data } })
-              if ('warning' in r && r.warning) alert(r.warning)
+              if ('warning' in r && r.warning) ui.toast(r.warning, 'warn')
             } else await addBudgetLineFn({ data: { projectId, ...data } })
             onSaved()
           } catch (e) {
@@ -297,7 +295,7 @@ function SowForm({
               type="button"
               className="btn-ghost py-2 text-bad"
               onClick={async () => {
-                if (!confirm('Delete this SOW item?')) return
+                if (!(await ui.confirm('Delete this SOW item?', { confirmLabel: 'Delete', danger: true }))) return
                 try {
                   await updateBudgetLineFn({ data: { id: line.id, delete: true } })
                   onSaved()

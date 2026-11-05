@@ -5,6 +5,7 @@ import { Modal, PageHeader, StatusPill, TypeBadge, UsageBar, fdate } from '#/com
 import { updateProjectFn } from '#/server/pages'
 import { rp } from '#/lib/format'
 import { createProjectFn, getProjects, getReference } from '#/server/fns'
+import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/projects/')({
   loader: async () => ({
@@ -62,17 +63,14 @@ function Projects() {
           <input className="input" name="code" placeholder="Project number" required />
           <input className="input" name="name" placeholder="Project name" required />
           <input className="input" name="clientName" placeholder="Client" required />
-          <select className="input" name="divisionId">
-            {ref.divisions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          <select className="input" name="type">
-            <option value="project">Project</option>
-            <option value="retainer">Retainer</option>
-          </select>
+          <Select name="divisionId" options={ref.divisions.map((d) => ({ value: String(d.id), label: d.name }))} />
+          <Select
+            name="type"
+            options={[
+              { value: 'project', label: 'Project' },
+              { value: 'retainer', label: 'Retainer' },
+            ]}
+          />
           <input className="input" name="startDate" type="date" />
           <input className="input" name="endDate" type="date" />
           <div className="flex items-center gap-3">
@@ -166,7 +164,7 @@ function Projects() {
                 setEdit(null)
                 await router.invalidate()
               } catch (err) {
-                alert(err instanceof Error ? err.message : String(err))
+                ui.error(err)
               }
             }}
           >
@@ -184,20 +182,22 @@ function Projects() {
             </label>
             <label className="field">
               Division
-              <select className="input" name="divisionId" defaultValue={ref.divisions.find((d) => d.name === edit.division)?.id}>
-                {ref.divisions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                name="divisionId"
+                defaultValue={String(ref.divisions.find((d) => d.name === edit.division)?.id ?? ref.divisions[0]?.id)}
+                options={ref.divisions.map((d) => ({ value: String(d.id), label: d.name }))}
+              />
             </label>
             <label className="field">
               Campaign type
-              <select className="input" name="type" defaultValue={edit.type}>
-                <option value="project">Project</option>
-                <option value="retainer">Retainer</option>
-              </select>
+              <Select
+                name="type"
+                defaultValue={edit.type}
+                options={[
+                  { value: 'project', label: 'Project' },
+                  { value: 'retainer', label: 'Retainer' },
+                ]}
+              />
             </label>
             <label className="field">
               Start date

@@ -7,6 +7,7 @@ import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
 import { getProject, getProjects, recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
+import { Select, ui } from '#/components/dialogs'
 
 const TABS = [
   ['all', 'All'],
@@ -49,7 +50,7 @@ function Expenses() {
       await fn()
       await router.invalidate()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      ui.error(e)
     }
   }
   const list = rows.filter((t) => (tab === 'all' ? t.status !== 'void' : stage(t) === tab)).sort((a, b) => b.total - a.total)
@@ -125,7 +126,8 @@ function Expenses() {
                             const body = new FormData()
                             body.set('file', file)
                             const res = await fetch(`/files/${t.id}?entity=transaction`, { method: 'POST', body })
-                            if (!res.ok) alert(await res.text())
+                            if (!res.ok) ui.toast(await res.text(), 'bad')
+                            else ui.toast('Document attached')
                             await router.invalidate()
                           }}
                         />
@@ -147,9 +149,23 @@ function Expenses() {
                     {s === 'unpaid' && (
                       <button
                         className="btn-ghost mr-1"
-                        onClick={() => {
-                          const v = prompt(`Amount paid (outstanding ${rp(t.outstanding)})`, String(t.outstanding))
-                          if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v) } }))
+                        onClick={async () => {
+                          const v = await ui.prompt(
+                            `Pay ${t.party ?? 'expense'}`,
+                            [
+                              {
+                                name: 'amount',
+                                label: 'Amount paid (IDR)',
+                                type: 'number',
+                                min: 1,
+                                defaultValue: String(t.outstanding),
+                                hint: `Outstanding ${rp(t.outstanding)}`,
+                              },
+                              { name: 'date', label: 'Payment date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                            ],
+                            { submitLabel: 'Record payment' },
+                          )
+                          if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v.amount), date: v.date } }))
                         }}
                       >
                         Pay
@@ -163,7 +179,13 @@ function Expenses() {
                     {t.paid === 0 && s !== 'void' && (
                       <button
                         className="btn-ghost"
-                        onClick={() => confirm('Void this expense?') && act(() => setStatusFn({ data: { id: t.id, status: 'void' } }))}
+                        onClick={async () =>
+                          (await ui.confirm('Void this expense?', {
+                            message: 'It stops counting against the budget. This cannot be undone.',
+                            confirmLabel: 'Void',
+                            danger: true,
+                          })) && act(() => setStatusFn({ data: { id: t.id, status: 'void' } }))
+                        }
                       >
                         Void
                       </button>
@@ -243,7 +265,7 @@ function ExpenseForm({
                 requestedBy: s('requestedBy'),
               },
             })
-            if (r.warning) alert(r.warning)
+            if (r.warning) ui.toast(r.warning, 'warn')
             onSaved()
           } catch (err) {
             setMsg(err instanceof Error ? err.message : String(err))
@@ -252,33 +274,25 @@ function ExpenseForm({
       >
         <label className="field">
           Project
-          <select className="input" value={projectCode} onChange={(e) => setProjectCode(e.target.value)}>
-            {projects.map((p) => (
-              <option key={p.id} value={p.code}>
-                {p.code} — {p.client}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={projectCode}
+            onChange={setProjectCode}
+            options={projects.map((p) => ({ value: p.code, label: `${p.code} — ${p.client}` }))}
+          />
         </label>
         <label className="field">
           SOW item
-          <select className="input" name="budgetLineId" required>
-            {lines.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name} ({rp(l.ceiling - l.actual)} left)
-              </option>
-            ))}
-          </select>
+          <Select
+            key={lines.map((l) => l.id).join()}
+            name="budgetLineId"
+            required
+            placeholder="No SOW items"
+            options={lines.map((l) => ({ value: String(l.id), label: `${l.name} (${rp(l.ceiling - l.actual)} left)` }))}
+          />
         </label>
         <label className="field">
           Payment category
-          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-            {CATEGORIES.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <Select value={kind} onChange={(v) => setKind(v as typeof kind)} options={CATEGORIES.map(([v, l]) => ({ value: v, label: l }))} />
         </label>
         <label className="field">
           {kind === 'vendor_bill' ? 'Vendor name' : 'Employee name'}
@@ -304,12 +318,16 @@ function ExpenseForm({
             </label>
             <label className="field">
               PPh withheld
-              <select className="input" name="pphType" defaultValue="pph23">
-                <option value="none">None</option>
-                <option value="pph23">PPh 23 (2%)</option>
-                <option value="pph4_2">PPh 4(2) (10%)</option>
-                <option value="pph26">PPh 26 (20%)</option>
-              </select>
+              <Select
+                name="pphType"
+                defaultValue="pph23"
+                options={[
+                  { value: 'none', label: 'None' },
+                  { value: 'pph23', label: 'PPh 23 (2%)' },
+                  { value: 'pph4_2', label: 'PPh 4(2) (10%)' },
+                  { value: 'pph26', label: 'PPh 26 (20%)' },
+                ]}
+              />
             </label>
             <label className="flex items-center gap-2 text-[13px] text-ink-2">
               <input type="checkbox" name="withPpn" defaultChecked /> Vendor charges VAT 11%

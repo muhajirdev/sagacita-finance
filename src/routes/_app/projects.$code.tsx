@@ -4,6 +4,7 @@ import { TransactionForm, TransactionTable } from '#/components/transactions'
 import { PageHeader, Section, StatusPill, UsageBar } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { addBudgetLineFn, getProject, submitBudgetFn } from '#/server/fns'
+import { ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/projects/$code')({
   loader: ({ params }) => getProject({ data: { code: params.code } }),
@@ -37,10 +38,10 @@ function ProjectPage() {
                 onClick={async () => {
                   try {
                     await submitBudgetFn({ data: { projectId: project.id } })
-                    alert('Sent for approval')
+                    ui.toast('Sent for approval')
                     await router.invalidate()
                   } catch (e) {
-                    alert(e instanceof Error ? e.message : String(e))
+                    ui.error(e)
                   }
                 }}
               >

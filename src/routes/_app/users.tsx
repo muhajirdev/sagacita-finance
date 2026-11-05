@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Modal, PageHeader, fdate } from '#/components/ui'
 import { USER_ROLES } from '#/db/schema'
 import { addUserFn, getUsers, resetPasswordFn, setRoleFn } from '#/server/pages'
+import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/users')({
   loader: () => getUsers(),
@@ -50,36 +51,34 @@ function Users() {
                 <td className="td font-medium">{u.name}</td>
                 <td className="td">{u.email}</td>
                 <td className="td">
-                  <select
-                    className="input w-auto py-1"
+                  <Select
+                    className="w-32 py-1"
                     defaultValue={u.role}
-                    onChange={async (e) => {
-                      try {
-                        await setRoleFn({ data: { id: u.id, role: e.target.value as (typeof USER_ROLES)[number] } })
-                      } catch (x) {
-                        alert(x instanceof Error ? x.message : String(x))
-                      }
-                      await router.invalidate()
+                    options={USER_ROLES}
+                    onChange={async (v) => {
+                      if (
+                        await ui.run(
+                          () => setRoleFn({ data: { id: u.id, role: v as (typeof USER_ROLES)[number] } }),
+                          `${u.name} is now ${v}`,
+                        )
+                      )
+                        await router.invalidate()
                     }}
-                  >
-                    {USER_ROLES.map((r) => (
-                      <option key={r}>{r}</option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td className="td text-ink-2">{fdate(u.createdAt.slice(0, 10))}</td>
                 <td className="td text-right">
                   <button
                     className="btn-ghost"
                     onClick={async () => {
-                      const pw = prompt(`New password for ${u.email} (min 8 characters)`)
-                      if (!pw) return
-                      try {
-                        await resetPasswordFn({ data: { id: u.id, password: pw } })
-                        alert('Password changed')
-                      } catch (x) {
-                        alert(x instanceof Error ? x.message : String(x))
-                      }
+                      const v = await ui.prompt(
+                        'Set password',
+                        [{ name: 'pw', label: 'New password', type: 'password', minLength: 8, hint: 'At least 8 characters' }],
+                        {
+                          message: u.email,
+                        },
+                      )
+                      if (v) await ui.run(() => resetPasswordFn({ data: { id: u.id, password: v.pw } }), 'Password changed')
                     }}
                   >
                     Set password
@@ -131,11 +130,7 @@ function Users() {
             </label>
             <label className="field">
               Role
-              <select className="input" name="role" defaultValue="finance">
-                {USER_ROLES.map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
+              <Select name="role" defaultValue="finance" options={USER_ROLES} />
             </label>
             <label className="field">
               Temporary password (min 8 characters)

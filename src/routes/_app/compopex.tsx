@@ -6,6 +6,7 @@ import { MONTHS, Modal, PageHeader, Stat, UsageBar } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { getReference } from '#/server/fns'
 import { getCompanyOpex, setOpexBudgetFn } from '#/server/pages'
+import { ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/compopex')({
   loader: async () => ({ opex: await getCompanyOpex({ data: {} }), ref: await getReference() }),
@@ -68,10 +69,23 @@ function CompanyOpex() {
                     className="tabular-nums hover:text-accent"
                     title="Change budget"
                     onClick={async () => {
-                      const v = prompt(`Annual budget for ${r.category} (${opex.year})`, String(r.annualBudget))
-                      if (v == null) return
-                      await setOpexBudgetFn({ data: { category: r.category, year: opex.year, annualBudget: Number(v) } })
-                      await router.invalidate()
+                      const v = await ui.prompt(`${r.category} budget`, [
+                        {
+                          name: 'budget',
+                          label: `Annual budget ${opex.year} (IDR)`,
+                          type: 'number',
+                          min: 0,
+                          defaultValue: String(r.annualBudget),
+                        },
+                      ])
+                      if (!v) return
+                      if (
+                        await ui.run(
+                          () => setOpexBudgetFn({ data: { category: r.category, year: opex.year, annualBudget: Number(v.budget) } }),
+                          'Budget saved',
+                        )
+                      )
+                        await router.invalidate()
                     }}
                   >
                     {rp(r.annualBudget)}

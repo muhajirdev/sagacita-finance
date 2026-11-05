@@ -16,6 +16,10 @@
   --color-good: #1a9a4b;
   --color-warn: #c77700;
   --color-bad: #d70015;
+
+  /* motion (animations.dev): strong ease-out for UI, iOS-like curve for drawers */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html { -webkit-font-smoothing: antialiased; font-feature-settings: "cv11", "ss01", "tnum"; }
@@ -33,8 +37,11 @@ body { @apply bg-canvas text-ink; letter-spacing: -0.011em; }
 }
 .input:focus { @apply border-accent; box-shadow: 0 0 0 4px rgb(0 113 227 / 0.15); }
 .field { @apply flex flex-col gap-1.5 text-[12px] font-medium text-ink-2; }
-.btn { @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white transition hover:bg-black/80 disabled:opacity-50; }
-.btn-ghost { @apply inline-flex items-center rounded-full border border-line-2 bg-surface px-3 py-1 text-[12px] font-medium text-ink-2 transition hover:bg-canvas; }
+.btn { @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-black/80 disabled:opacity-50; }
+.btn-ghost { @apply inline-flex items-center rounded-full border border-line-2 bg-surface px-3 py-1 text-[12px] font-medium text-ink-2 hover:bg-canvas; }
+/* press feedback: a small scale-down, quick and ease-out */
+.btn, .btn-ghost { transition: transform 160ms var(--ease-out), background-color 150ms ease, opacity 150ms ease; }
+.btn:active:not(:disabled), .btn-ghost:active:not(:disabled) { transform: scale(0.97); }
 
 /* tables */
 .table { @apply w-full border-collapse text-[13px]; }
@@ -55,4 +62,36 @@ body { @apply bg-canvas text-ink; letter-spacing: -0.011em; }
 /* progress */
 .bar { @apply h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06]; }
 .bar > span { @apply block h-full rounded-full; }
+}
+
+/* ---------- motion ----------
+   Transform + opacity only. Enter 200ms, exit faster. Popovers grow from their trigger. */
+.m-backdrop { transition: opacity 200ms var(--ease-out); }
+.m-backdrop[data-starting-style], .m-backdrop[data-ending-style] { opacity: 0; }
+.m-backdrop[data-ending-style] { transition-duration: 150ms; }
+
+.m-dialog { transform: translate(-50%, -50%); transition: transform 200ms var(--ease-out), opacity 200ms var(--ease-out); }
+.m-dialog[data-starting-style], .m-dialog[data-ending-style] { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+.m-dialog[data-ending-style] { transition-duration: 150ms; }
+
+.m-popover { transform-origin: var(--transform-origin); transition: transform 150ms var(--ease-out), opacity 150ms var(--ease-out); }
+.m-popover[data-starting-style], .m-popover[data-ending-style] { opacity: 0; transform: scale(0.96); }
+.m-popover[data-ending-style] { transition-duration: 100ms; }
+
+.m-drawer { transition: transform 320ms var(--ease-drawer); }
+.m-drawer[data-starting-style], .m-drawer[data-ending-style] { transform: translateX(-100%); }
+.m-drawer[data-ending-style] { transition-duration: 220ms; }
+
+.m-toast { transition: transform 250ms var(--ease-out), opacity 250ms var(--ease-out); }
+.m-toast[data-starting-style] { opacity: 0; transform: translateY(12px) scale(0.98); }
+.m-toast[data-ending-style] { opacity: 0; transform: translateY(6px) scale(0.98); transition-duration: 150ms; }
+
+/* reduced motion: keep fades, drop movement */
+@media (prefers-reduced-motion: reduce) {
+  .m-dialog[data-starting-style], .m-dialog[data-ending-style] { transform: translate(-50%, -50%); }
+  .m-popover[data-starting-style], .m-popover[data-ending-style],
+  .m-toast[data-starting-style], .m-toast[data-ending-style] { transform: none; }
+  .m-drawer { transition: opacity 150ms ease; }
+  .m-drawer[data-starting-style], .m-drawer[data-ending-style] { transform: none; opacity: 0; }
+  .btn:active, .btn-ghost:active { transform: none; }
 }

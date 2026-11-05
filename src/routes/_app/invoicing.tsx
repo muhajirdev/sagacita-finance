@@ -7,6 +7,7 @@ import type { TransactionRow } from '#/lib/finance'
 import { rp } from '#/lib/format'
 import { recordPaymentFn, recordTransactionFn } from '#/server/fns'
 import { getInvoicing, updateTransactionFn } from '#/server/pages'
+import { Select, ui } from '#/components/dialogs'
 
 const TABS = [
   ['pending', 'Pending'],
@@ -151,16 +152,29 @@ function Invoicing() {
                         <button
                           className="btn-ghost"
                           onClick={async () => {
-                            const date = prompt('Payment received date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10))
-                            if (!date) return
-                            const amt = prompt(`Amount received (outstanding ${rp(i.outstanding)})`, String(i.outstanding))
-                            if (!amt) return
-                            try {
-                              await recordPaymentFn({ data: { transactionId: i.id, amount: Number(amt), date } })
+                            const v = await ui.prompt(
+                              `Payment for ${i.number ?? 'invoice'}`,
+                              [
+                                { name: 'date', label: 'Date received', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                                {
+                                  name: 'amount',
+                                  label: 'Amount received (IDR)',
+                                  type: 'number',
+                                  min: 1,
+                                  defaultValue: String(i.outstanding),
+                                  hint: `Outstanding ${rp(i.outstanding)}`,
+                                },
+                              ],
+                              { submitLabel: 'Mark paid' },
+                            )
+                            if (!v) return
+                            if (
+                              await ui.run(
+                                () => recordPaymentFn({ data: { transactionId: i.id, amount: Number(v.amount), date: v.date } }),
+                                'Payment recorded',
+                              )
+                            )
                               await router.invalidate()
-                            } catch (e) {
-                              alert(e instanceof Error ? e.message : String(e))
-                            }
                           }}
                         >
                           Mark paid
@@ -252,13 +266,11 @@ function InvoiceForm({
         {!invoice && (
           <label className="field sm:col-span-2">
             Project
-            <select className="input" name="projectId" required>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.client} {p.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              name="projectId"
+              required
+              options={projects.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.client} ${p.name}` }))}
+            />
           </label>
         )}
         <label className="field">
@@ -283,18 +295,14 @@ function InvoiceForm({
         </label>
         <label className="field">
           Payment terms
-          <select
-            className="input"
+          <Select
             value={terms}
-            onChange={(e) => {
-              setTerms(e.target.value)
-              applyTerms(date, e.target.value)
+            onChange={(v) => {
+              setTerms(v)
+              applyTerms(date, v)
             }}
-          >
-            <option>NET 14</option>
-            <option>NET 30</option>
-            <option value="Other">Other</option>
-          </select>
+            options={['NET 14', 'NET 30', 'Other']}
+          />
         </label>
         <label className="field">
           Due date

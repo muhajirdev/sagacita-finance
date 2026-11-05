@@ -6,6 +6,7 @@ import type { TransactionRow } from '#/lib/finance'
 import { StatusPill } from '#/components/ui'
 import { KIND_LABEL, rp } from '#/lib/format'
 import { recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
+import { Select, ui } from '#/components/dialogs'
 
 export function TransactionTable({ rows, showProject = true }: { rows: TransactionRow[]; showProject?: boolean }) {
   const router = useRouter()
@@ -14,7 +15,7 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
       await fn()
       await router.invalidate()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      ui.error(e)
     }
   }
   return (
@@ -74,17 +75,23 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                 {t.status !== 'void' && t.outstanding > 0 && (
                   <button
                     className="btn-ghost"
-                    onClick={() => {
-                      const v = prompt(
-                        `Amount ${t.direction === 'in' ? 'received' : 'paid'} (outstanding ${rp(t.outstanding)})`,
-                        String(t.outstanding),
+                    onClick={async () => {
+                      const v = await ui.prompt(
+                        t.direction === 'in' ? 'Record payment received' : 'Record payment',
+                        [
+                          {
+                            name: 'amount',
+                            label: `Amount ${t.direction === 'in' ? 'received' : 'paid'} (IDR)`,
+                            type: 'number',
+                            min: 1,
+                            defaultValue: String(t.outstanding),
+                            hint: `Outstanding ${rp(t.outstanding)}`,
+                          },
+                          { name: 'date', label: 'Date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                        ],
+                        { submitLabel: 'Save' },
                       )
-                      if (v)
-                        act(() =>
-                          recordPaymentFn({
-                            data: { transactionId: t.id, amount: Number(v) },
-                          }),
-                        )
+                      if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v.amount), date: v.date } }))
                     }}
                   >
                     {t.direction === 'in' ? 'Received' : 'Pay'}
@@ -107,7 +114,13 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                 {t.status !== 'void' && t.paid === 0 && (
                   <button
                     className="btn-ghost"
-                    onClick={() => confirm('Void this transaction?') && act(() => setStatusFn({ data: { id: t.id, status: 'void' } }))}
+                    onClick={async () =>
+                      (await ui.confirm('Void this transaction?', {
+                        message: 'This cannot be undone.',
+                        confirmLabel: 'Void',
+                        danger: true,
+                      })) && act(() => setStatusFn({ data: { id: t.id, status: 'void' } }))
+                    }
                   >
                     Void
                   </button>
@@ -183,38 +196,30 @@ export function TransactionForm({
     >
       <label className="field">
         Kind
-        <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-          {TRANSACTION_KINDS.filter((k) => projectId || k !== 'client_invoice').map((k) => (
-            <option key={k} value={k}>
-              {KIND_LABEL[k]}
-            </option>
-          ))}
-        </select>
+        <Select
+          value={kind}
+          onChange={(v) => setKind(v as typeof kind)}
+          options={TRANSACTION_KINDS.filter((k) => projectId || k !== 'client_invoice').map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+        />
       </label>
       {projectId ? (
         kind !== 'client_invoice' && (
           <label className="field">
             Budget line
-            <select className="input" name="budgetLineId" required>
-              {lines.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              key={lines.map((l) => l.id).join()}
+              name="budgetLineId"
+              required
+              placeholder="No SOW items"
+              options={lines.map((l) => ({ value: String(l.id), label: l.name }))}
+            />
           </label>
         )
       ) : (
         <>
           <label className="field">
             Company
-            <select className="input" name="companyId" required>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select name="companyId" required options={companies.map((c) => ({ value: String(c.id), label: c.name }))} />
           </label>
           <label className="field">
             Category
@@ -246,11 +251,7 @@ export function TransactionForm({
       </label>
       <label className="field">
         PPh
-        <select className="input" name="pphType" defaultValue="none">
-          {PPH_TYPES.map((p) => (
-            <option key={p}>{p}</option>
-          ))}
-        </select>
+        <Select name="pphType" defaultValue="none" options={PPH_TYPES} />
       </label>
       <label className="field">
         PPh amount (optional)

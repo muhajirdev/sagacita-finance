@@ -1,3 +1,5 @@
+import { Dialog } from '@base-ui/react/dialog'
+import { DialogHost } from '#/components/dialogs'
 import { Link, Outlet, createFileRoute, redirect, useRouter, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
@@ -122,7 +124,11 @@ function Layout() {
 
       {/* phone: top bar + bottom tabs */}
       <header className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur md:hidden">
-        <button className="text-ink-2" title="Menu" onClick={() => setMenu(true)}>
+        <button
+          className="-m-1.5 rounded-md p-1.5 text-ink-2 transition-transform duration-150 active:scale-90"
+          title="Menu"
+          onClick={() => setMenu(true)}
+        >
           <IconMenu />
         </button>
         <span className="text-[15px] font-semibold">Sagacita Finance</span>
@@ -130,22 +136,27 @@ function Layout() {
           <IconLogout />
         </button>
       </header>
-      {menu && (
-        <div className="fixed inset-0 z-20 bg-black/20 md:hidden" onClick={() => setMenu(false)}>
-          <div
-            className="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-surface px-3 py-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <NavList role={role} onPick={() => setMenu(false)} />
-          </div>
-        </div>
-      )}
+      <Dialog.Root open={menu} onOpenChange={setMenu}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="m-backdrop fixed inset-0 z-20 bg-black/25 md:hidden" />
+          <Dialog.Popup className="m-drawer fixed inset-y-0 left-0 z-30 flex w-72 max-w-[85vw] flex-col bg-surface px-3 py-5 shadow-2xl outline-none md:hidden">
+            <Dialog.Title className="flex items-center gap-2.5 px-2.5 pb-5">
+              <span className="grid size-7 place-items-center rounded-lg bg-brand text-[13px] font-bold text-white">S</span>
+              <span className="text-[14px] font-semibold">Sagacita Finance</span>
+            </Dialog.Title>
+            <div className="-mx-1 flex-1 overflow-y-auto px-1">
+              <NavList role={role} onPick={() => setMenu(false)} />
+            </div>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <main className="min-w-0 flex-1 px-4 pb-12 pt-6 md:px-10 md:pb-12 md:pt-10">
         <div className="mx-auto max-w-6xl">
           <Outlet />
         </div>
       </main>
+      <DialogHost />
     </div>
   )
 }

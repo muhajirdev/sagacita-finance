@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 
 import { PageHeader } from '#/components/ui'
 import { addClientFn, getClients } from '#/server/pages'
+import { ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/clients')({
   loader: () => getClients(),
@@ -20,10 +21,10 @@ function Clients() {
           <button
             className="btn"
             onClick={async () => {
-              const name = prompt('Client name')?.trim()
+              const v = await ui.prompt('Add client', [{ name: 'name', label: 'Client name' }], { submitLabel: 'Add client' })
+              const name = v?.name.trim()
               if (!name) return
-              await addClientFn({ data: { name } })
-              await router.invalidate()
+              if (await ui.run(() => addClientFn({ data: { name } }), 'Client added')) await router.invalidate()
             }}
           >
             + Add client

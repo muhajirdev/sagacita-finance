@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { MONTHS, Modal, PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { getPayroll, savePayrollFn } from '#/server/pages'
+import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/empopex')({
   loader: () => getPayroll({ data: {} }),
@@ -109,19 +110,17 @@ function EmployeeOpex() {
                 setOpen(false)
                 await router.invalidate()
               } catch (err) {
-                alert(err instanceof Error ? err.message : String(err))
+                ui.error(err)
               }
             }}
           >
             <label className="field">
               Month
-              <select className="input" name="month" defaultValue={new Date().getMonth() + 1}>
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={i + 1}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <Select
+                name="month"
+                defaultValue={String(new Date().getMonth() + 1)}
+                options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+              />
             </label>
             <label className="field">
               Year
@@ -129,13 +128,7 @@ function EmployeeOpex() {
             </label>
             <label className="field sm:col-span-2">
               Division
-              <select className="input" name="divisionId">
-                {divisions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+              <Select name="divisionId" options={divisions.map((d) => ({ value: String(d.id), label: d.name }))} />
             </label>
             <label className="field">
               Net salary total
