@@ -9,7 +9,7 @@
     {
       "binding": "DB",
       "database_name": "sagacita-finance",
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "59233b74-936c-4bea-8f6b-b73d4d621734",
       "migrations_dir": "drizzle"
     }
   ]
