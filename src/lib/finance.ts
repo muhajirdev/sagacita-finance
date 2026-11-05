@@ -213,6 +213,71 @@ export async function projectBudget(db: Db, projectId: number) {
   return { lines: rows, totals }
 }
 
+/**
+ * Change a budget line. Changing amounts on an approved (active) project is allowed but flagged,
+ * because the approved budget no longer matches.
+ */
+export async function updateBudgetLine(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: { name?: string; charge?: number; maxExpense?: number; asfAmount?: number },
+) {
+  const line = await db.select().from(budgetLines).where(eq(budgetLines.id, id)).get()
+  if (!line) throw new FinanceError(`budget line ${id} not found`)
+  const set: Partial<typeof budgetLines.$inferInsert> = {}
+  if (input.name) set.name = input.name.trim()
+  if (input.charge !== undefined) set.charge = Math.round(input.charge)
+  if (input.maxExpense !== undefined) set.maxExpense = Math.round(input.maxExpense)
+  if (input.asfAmount !== undefined) set.asfAmount = Math.round(input.asfAmount)
+  if (!Object.keys(set).length) throw new FinanceError('nothing to change')
+  const [row] = await db.update(budgetLines).set(set).where(eq(budgetLines.id, id)).returning()
+  await log(db, actor, 'update', 'budget_lines', id, { before: line, after: set })
+  const project = await db.select().from(projects).where(eq(projects.id, line.projectId)).get()
+  const amountsChanged = input.charge !== undefined || input.maxExpense !== undefined || input.asfAmount !== undefined
+  const warning =
+    amountsChanged && project?.status === 'active'
+      ? `Budget of approved project ${project.code} changed; tell the owner (the change is in the activity log).`
+      : null
+  return { line: row, warning }
+}
+
+/** Removes a budget line that has no transactions on it. */
+export async function deleteBudgetLine(db: Db, actor: Actor, id: number) {
+  const used = await db.select({ id: transactions.id }).from(transactions).where(eq(transactions.budgetLineId, id)).get()
+  if (used) throw new FinanceError('budget line has transactions; move or void them first')
+  const [row] = await db.delete(budgetLines).where(eq(budgetLines.id, id)).returning()
+  if (!row) throw new FinanceError(`budget line ${id} not found`)
+  await log(db, actor, 'delete', 'budget_lines', id, row)
+  return { deleted: row }
+}
+
+/** Close or reopen a project. Draft -> active only happens through budget approval. */
+export async function setProjectStatus(db: Db, actor: Actor, project: string | number, status: 'active' | 'closed') {
+  const p = await findProject(db, project)
+  if (p.status === 'draft') throw new FinanceError(`project ${p.code} is draft; its budget must be approved first (submit_budget)`)
+  const [row] = await db.update(projects).set({ status }).where(eq(projects.id, p.id)).returning()
+  await log(db, actor, 'update', 'projects', p.id, { status })
+  return row
+}
+
+/** Update a client / vendor / employee: name, NPWP, bank account, notes. */
+export async function updateParty(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: { name?: string; npwp?: string | null; bankAccount?: string | null; notes?: string | null },
+) {
+  const set: Partial<typeof parties.$inferInsert> = {}
+  if (input.name) set.name = input.name.trim()
+  for (const k of ['npwp', 'bankAccount', 'notes'] as const) if (input[k] !== undefined) set[k] = input[k] || null
+  if (!Object.keys(set).length) throw new FinanceError('nothing to change')
+  const [row] = await db.update(parties).set(set).where(eq(parties.id, id)).returning()
+  if (!row) throw new FinanceError(`party ${id} not found`)
+  await log(db, actor, 'update', 'parties', id, set)
+  return row
+}
+
 // ------------------------------------------------------------------ transactions
 
 export type RecordTransactionInput = {
@@ -292,13 +357,11 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
 
   let approval: typeof approvals.$inferSelect | null = null
   if (row.direction === 'out' && row.status === 'draft') {
-    const who = input.partyName || input.category || 'company'
-    const where = project ? project.code : 'company spend'
     approval = await requestApproval(db, actor, {
       entity: 'transaction',
       entityId: row.id,
       amount: row.total,
-      summary: `${KIND_TEXT[row.kind]} ${who}, Rp ${row.total.toLocaleString('id-ID')} (${where})${row.description ? ': ' + row.description : ''}`,
+      summary: spendSummary(row, input.partyName || null, project?.code ?? null),
     })
   }
 
@@ -373,6 +436,89 @@ export async function recordPayment(
     .returning()
   await log(db, actor, 'pay', 'transactions', tx.id, row)
   return { payment: row, outstanding: outstanding - amount }
+}
+
+function spendSummary(t: typeof transactions.$inferSelect, partyName: string | null, projectCode: string | null) {
+  const who = partyName || t.category || 'company'
+  return `${KIND_TEXT[t.kind]} ${who}, Rp ${t.total.toLocaleString('id-ID')} (${projectCode ?? 'company spend'})${t.description ? ': ' + t.description : ''}`
+}
+
+/**
+ * Fix a transaction that has no payments yet (typo in amount, date, vendor, line...).
+ * Tax is recomputed when dpp / PPN / PPh change. A pending approval is updated to match.
+ */
+export async function updateTransaction(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: {
+    budgetLineId?: number | null
+    partyName?: string
+    category?: string | null
+    description?: string | null
+    number?: string | null
+    issueDate?: string
+    dueDate?: string | null
+    dpp?: number
+    withPpn?: boolean
+    pphType?: PphType
+    pph?: number
+    requestedBy?: string | null
+    attachmentUrl?: string | null
+  },
+) {
+  const tx = await db.select().from(transactions).where(eq(transactions.id, id)).get()
+  if (!tx) throw new FinanceError(`transaction ${id} not found`)
+  if (tx.status === 'void' || tx.status === 'settled') throw new FinanceError(`transaction ${id} is ${tx.status}; it can't be edited`)
+  if ((await paidSoFar(db, id)) > 0) throw new FinanceError('transaction already has payments; undo them first (undo_payment) or void it')
+
+  const set: Partial<typeof transactions.$inferInsert> = { updatedAt: new Date().toISOString() }
+  if (input.budgetLineId !== undefined) {
+    if (input.budgetLineId != null) {
+      const line = await db.select().from(budgetLines).where(eq(budgetLines.id, input.budgetLineId)).get()
+      if (!line || line.projectId !== tx.projectId) throw new FinanceError('budget line does not belong to this project')
+    }
+    set.budgetLineId = input.budgetLineId
+  }
+  let partyName: string | null = null
+  if (input.partyName) {
+    const kind: PartyKind = tx.direction === 'in' ? 'client' : tx.kind === 'vendor_bill' ? 'vendor' : 'employee'
+    const party = await ensureParty(db, actor, kind, input.partyName)
+    set.partyId = party.id
+    partyName = party.name
+  }
+  for (const k of ['category', 'description', 'number', 'issueDate', 'dueDate', 'requestedBy', 'attachmentUrl'] as const)
+    if (input[k] !== undefined) (set as Record<string, unknown>)[k] = input[k] || null
+  if (input.dpp !== undefined || input.withPpn !== undefined || input.pphType !== undefined || input.pph !== undefined) {
+    const pphType = input.pphType ?? (tx.pphType as PphType)
+    Object.assign(
+      set,
+      computeTax({
+        dpp: input.dpp ?? tx.dpp,
+        withPpn: input.withPpn ?? tx.ppn > 0,
+        pphType,
+        pph: input.pph ?? (input.pphType === undefined && input.dpp === undefined ? tx.pph : undefined),
+      }),
+    )
+  }
+  const [row] = await db.update(transactions).set(set).where(eq(transactions.id, id)).returning()
+  await log(db, actor, 'update', 'transactions', id, input)
+
+  if (!partyName && row.partyId) partyName = (await db.select().from(parties).where(eq(parties.id, row.partyId)).get())?.name ?? null
+  const project = row.projectId ? await db.select().from(projects).where(eq(projects.id, row.projectId)).get() : null
+  await db
+    .update(approvals)
+    .set({ amount: row.total, summary: spendSummary(row, partyName, project?.code ?? null) })
+    .where(and(eq(approvals.entity, 'transaction'), eq(approvals.entityId, id), eq(approvals.status, 'pending')))
+  return row
+}
+
+/** Removes a payment recorded by mistake. */
+export async function undoPayment(db: Db, actor: Actor, paymentId: number) {
+  const [row] = await db.delete(payments).where(eq(payments.id, paymentId)).returning()
+  if (!row) throw new FinanceError(`payment ${paymentId} not found`)
+  await log(db, actor, 'delete', 'payments', paymentId, row)
+  return { deleted: row }
 }
 
 // ------------------------------------------------------------------ approvals

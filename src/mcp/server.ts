@@ -28,6 +28,12 @@ import {
   listApprovals,
   pnlReport,
   submitBudget,
+  deleteBudgetLine,
+  setProjectStatus,
+  undoPayment,
+  updateBudgetLine,
+  updateParty,
+  updateTransaction,
 } from '#/lib/finance'
 
 const SCHEMA_GUIDE = `Sagacita Finance data model (SQLite / Cloudflare D1). Money is integer rupiah. Dates are YYYY-MM-DD.
@@ -307,6 +313,87 @@ function createServer(env: Env, appUrl: string) {
       inputSchema: { year: z.number().int().optional().describe('Default: this year') },
     },
     async ({ year }) => safe(() => pnlReport(env.DB, year ?? new Date().getFullYear())),
+  )
+
+  server.registerTool(
+    'update_transaction',
+    {
+      description:
+        'Fix a transaction that has no payments yet: amount (dpp), PPN/PPh, dates, vendor/employee, budget line, number, description. ' +
+        'Only pass the fields that change. Tax is recomputed. Confirm the change with the person first.',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int(),
+        budgetLineId: z.number().int().nullable().optional(),
+        partyName: z.string().optional(),
+        category: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        number: z.string().nullable().optional(),
+        issueDate: z.string().optional(),
+        dueDate: z.string().nullable().optional(),
+        dpp: z.number().nonnegative().optional(),
+        withPpn: z.boolean().optional(),
+        pphType: z.enum(PPH_TYPES).optional(),
+        pph: z.number().nonnegative().optional(),
+        requestedBy: z.string().nullable().optional(),
+        attachmentUrl: z.string().nullable().optional(),
+      },
+    },
+    async ({ actor, id, ...input }) => safe(() => updateTransaction(db, actor, id, input)),
+  )
+
+  server.registerTool(
+    'undo_payment',
+    {
+      description: 'Delete a payment recorded by mistake. Find the payment id with query (payments table). Confirm first.',
+      inputSchema: { actor: actorField, paymentId: z.number().int() },
+    },
+    async ({ actor, paymentId }) => safe(() => undoPayment(db, actor, paymentId)),
+  )
+
+  server.registerTool(
+    'update_budget_line',
+    {
+      description:
+        'Change a budget line: name, charge, maxExpense, asfAmount, or delete=true to remove a line with no transactions. ' +
+        'Returns a warning when an approved project budget changes. Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int().describe('Budget line id from project_budget'),
+        name: z.string().optional(),
+        charge: z.number().nonnegative().optional(),
+        maxExpense: z.number().nonnegative().optional(),
+        asfAmount: z.number().nonnegative().optional(),
+        delete: z.boolean().optional(),
+      },
+    },
+    async ({ actor, id, delete: del, ...input }) =>
+      safe(() => (del ? deleteBudgetLine(db, actor, id) : updateBudgetLine(db, actor, id, input))),
+  )
+
+  server.registerTool(
+    'set_project_status',
+    {
+      description: 'Close a finished project, or reopen a closed one. (Draft projects become active only through budget approval.)',
+      inputSchema: { actor: actorField, project: z.string(), status: z.enum(['active', 'closed']) },
+    },
+    async ({ actor, project, status }) => safe(() => setProjectStatus(db, actor, project, status)),
+  )
+
+  server.registerTool(
+    'update_party',
+    {
+      description: 'Update a client, vendor or employee: name, NPWP, bank account, notes. Find the id with query (parties table).',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int(),
+        name: z.string().optional(),
+        npwp: z.string().nullable().optional(),
+        bankAccount: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      },
+    },
+    async ({ actor, id, ...input }) => safe(() => updateParty(db, actor, id, input)),
   )
 
   return server

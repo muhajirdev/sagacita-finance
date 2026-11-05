@@ -27,6 +27,11 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | `submit_budget` | Ask for approval of a draft project's budget lines; approval makes it active |
 | `list_approvals` | Approval queue; `unnotified: true` returns new requests once, for a WhatsApp routine |
 | `decide_approval` | Approve or reject (approve spend = payable, reject = void) |
+| `update_transaction` | Fix amount, tax, dates, vendor or line on a transaction with no payments |
+| `undo_payment` | Delete a payment recorded by mistake |
+| `update_budget_line` | Change or delete (if unused) a budget line; warns when an approved budget changes |
+| `set_project_status` | Close or reopen a project |
+| `update_party` | NPWP, bank account, name, notes of a client / vendor / employee |
 | `pnl_report` | Whole-year P&L in one call: totals, monthly series, per-project rows |
 
 ### Approvals
