@@ -338,3 +338,14 @@ export const divisionsList = createServerFn().handler(async () => {
   await requireRole()
   return getDb().select().from(divisions)
 })
+
+export const resetPasswordFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.number().int(), password: z.string().min(8) }))
+  .handler(async ({ data }) => {
+    await requireRole('owner')
+    await getDb()
+      .update(users)
+      .set({ passwordHash: await hashPassword(data.password) })
+      .where(eq(users.id, data.id))
+    return { ok: true }
+  })

@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { Modal, PageHeader, fdate } from '#/components/ui'
 import { USER_ROLES } from '#/db/schema'
-import { addUserFn, getUsers, setRoleFn } from '#/server/pages'
+import { addUserFn, getUsers, resetPasswordFn, setRoleFn } from '#/server/pages'
 
 export const Route = createFileRoute('/_app/users')({
   loader: () => getUsers(),
@@ -41,6 +41,7 @@ function Users() {
               <th className="th">Email</th>
               <th className="th">Role</th>
               <th className="th">Added</th>
+              <th className="th" />
             </tr>
           </thead>
           <tbody>
@@ -67,6 +68,23 @@ function Users() {
                   </select>
                 </td>
                 <td className="td text-ink-2">{fdate(u.createdAt.slice(0, 10))}</td>
+                <td className="td text-right">
+                  <button
+                    className="btn-ghost"
+                    onClick={async () => {
+                      const pw = prompt(`New password for ${u.email} (min 8 characters)`)
+                      if (!pw) return
+                      try {
+                        await resetPasswordFn({ data: { id: u.id, password: pw } })
+                        alert('Password changed')
+                      } catch (x) {
+                        alert(x instanceof Error ? x.message : String(x))
+                      }
+                    }}
+                  >
+                    Set password
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

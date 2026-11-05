@@ -2,10 +2,10 @@
 import { createServerFn } from '@tanstack/react-start'
 import { deleteCookie, getCookie, setCookie } from '@tanstack/react-start/server'
 import { env } from 'cloudflare:workers'
-import { eq } from 'drizzle-orm'
+import { and, eq, gt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, users } from '#/db/schema'
+import { PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, activityLog, users } from '#/db/schema'
 import { SESSION_COOKIE, SESSION_DAYS, readSession, signSession, verifyPassword } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -38,9 +38,11 @@ async function currentUser() {
   return user ?? null
 }
 
-async function requireUser() {
+/** Signed-in user. HR only sees payroll / company OpEx, so finance data refuses the hr role unless allowHr. */
+async function requireUser(allowHr = false) {
   const user = await currentUser()
   if (!user) throw new Error('Not signed in')
+  if (user.role === 'hr' && !allowHr) throw new Error("You don't have access to this section")
   return user
 }
 
@@ -49,8 +51,21 @@ export const getMe = createServerFn().handler(() => currentUser())
 export const login = createServerFn({ method: 'POST' })
   .validator(z.object({ email: z.string().email(), password: z.string().min(1) }))
   .handler(async ({ data }) => {
-    const user = await getDb().select().from(users).where(eq(users.email, data.email.toLowerCase())).get()
-    if (!user || !(await verifyPassword(data.password, user.passwordHash))) return { ok: false as const, error: 'Wrong email or password' }
+    const db = getDb()
+    const email = data.email.toLowerCase()
+    // Lock an email for 15 minutes after 5 failed attempts (failures are kept in activity_log).
+    const since = new Date(Date.now() - 15 * 60_000).toISOString()
+    const fails = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(activityLog)
+      .where(and(eq(activityLog.action, 'login_failed'), eq(activityLog.actor, email), gt(activityLog.at, since)))
+      .get()
+    if (Number(fails?.n ?? 0) >= 5) return { ok: false as const, error: 'Too many failed attempts. Try again in 15 minutes.' }
+    const user = await db.select().from(users).where(eq(users.email, email)).get()
+    if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
+      await db.insert(activityLog).values({ actor: email, action: 'login_failed', entity: 'users', entityId: user?.id ?? 0 })
+      return { ok: false as const, error: 'Wrong email or password' }
+    }
     setCookie(SESSION_COOKIE, await signSession(user.id, env.SESSION_SECRET), {
       httpOnly: true,
       secure: true,
@@ -95,7 +110,7 @@ export const getDashboard = createServerFn().handler(async () => {
 })
 
 export const getReference = createServerFn().handler(async () => {
-  await requireUser()
+  await requireUser(true)
   const db = getDb()
   return { divisions: await listDivisions(db), companies: await listCompanies(db), categories: await listOpexCategories(db) }
 })
@@ -188,7 +203,7 @@ export const recordTransactionFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data }) => {
-    const user = await requireUser()
+    const user = await requireUser(true)
     return recordTransaction(getDb(), user.email, { ...data, source: 'web', createdBy: user.id })
   })
 
@@ -209,7 +224,7 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
 export const getApprovals = createServerFn()
   .validator(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
   .handler(async ({ data }) => {
-    const user = await requireUser()
+    const user = await requireUser(true)
     return { canDecide: user.role === 'owner', approvals: await listApprovals(getDb(), { status: data.status ?? 'pending', limit: 100 }) }
   })
 
