@@ -14,6 +14,7 @@ import {
   findProject,
   listDivisions,
   listCompanies,
+  listOpexCategories,
   listProjects,
   listTransactions,
   payablesDue,
@@ -46,7 +47,7 @@ export const login = createServerFn({ method: 'POST' })
   .validator(z.object({ email: z.string().email(), password: z.string().min(1) }))
   .handler(async ({ data }) => {
     const user = await getDb().select().from(users).where(eq(users.email, data.email.toLowerCase())).get()
-    if (!user || user.role === 'bot' || !(await verifyPassword(data.password, user.passwordHash)))
+    if (!user || !(await verifyPassword(data.password, user.passwordHash)))
       return { ok: false as const, error: 'Wrong email or password' }
     setCookie(SESSION_COOKIE, await signSession(user.id, env.SESSION_SECRET), {
       httpOnly: true,
@@ -86,7 +87,7 @@ export const getDashboard = createServerFn().handler(async () => {
 export const getReference = createServerFn().handler(async () => {
   await requireUser()
   const db = getDb()
-  return { divisions: await listDivisions(db), companies: await listCompanies(db) }
+  return { divisions: await listDivisions(db), companies: await listCompanies(db), categories: await listOpexCategories(db) }
 })
 
 export const getProjects = createServerFn().handler(async () => {

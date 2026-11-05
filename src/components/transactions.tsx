@@ -115,10 +115,12 @@ export function TransactionForm({
   projectId,
   lines = [],
   companies = [],
+  categories = [],
 }: {
   projectId?: number
   lines?: Line[]
   companies?: { id: number; name: string }[]
+  categories?: { id: number; category: string }[]
 }) {
   const router = useRouter()
   const [kind, setKind] = useState<(typeof TRANSACTION_KINDS)[number]>('vendor_bill')
@@ -196,7 +198,12 @@ export function TransactionForm({
           </label>
           <label className="text-xs font-semibold text-stone-500">
             Category
-            <input className="input mt-1" name="category" placeholder="Office Rental" />
+            <input className="input mt-1" name="category" list="opex-categories" placeholder="Office Rental" />
+            <datalist id="opex-categories">
+              {categories.map((c) => (
+                <option key={c.id} value={c.category} />
+              ))}
+            </datalist>
           </label>
         </>
       )}

@@ -10,7 +10,7 @@ CREATE VIEW v_transactions AS
          then 1 else 0 end as overdue,
     t.category, t.description, t.requested_by, t.source, t.attachment_url,
     t.company_id, c.name as company,
-    pr.division_id, d.name as division,
+    coalesce(pr.division_id, t.division_id) as division_id, d.name as division,
     t.project_id, pr.code as project_code, pr.name as project_name,
     pr.client_id, cl.name as client,
     t.budget_line_id, bl.name as budget_line,
@@ -21,7 +21,7 @@ CREATE VIEW v_transactions AS
   left join (select transaction_id, sum(amount) as paid from payments group by transaction_id) p
     on p.transaction_id = t.id
   left join projects pr on pr.id = t.project_id
-  left join divisions d on d.id = pr.division_id
+  left join divisions d on d.id = coalesce(pr.division_id, t.division_id)
   left join parties cl on cl.id = pr.client_id
   left join budget_lines bl on bl.id = t.budget_line_id
   left join parties pa on pa.id = t.party_id;

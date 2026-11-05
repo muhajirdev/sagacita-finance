@@ -7,6 +7,7 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 
 import {
   activityLog,
+  opexBudgets,
   budgetLines,
   companies,
   divisions,
@@ -47,6 +48,10 @@ export async function listDivisions(db: Db) {
     .from(divisions)
     .innerJoin(companies, eq(companies.id, divisions.companyId))
     .orderBy(asc(divisions.name))
+}
+
+export async function listOpexCategories(db: Db, fiscalYear = new Date().getFullYear()) {
+  return db.select().from(opexBudgets).where(eq(opexBudgets.fiscalYear, fiscalYear)).orderBy(asc(opexBudgets.sortOrder))
 }
 
 export async function listParties(db: Db, kind?: PartyKind) {
@@ -222,6 +227,8 @@ export type RecordTransactionInput = {
   budgetLineId?: number | null
   /** Required when there is no project (company spend). */
   companyId?: number | null
+  /** Division for company spend with no project. */
+  divisionId?: number | null
   /** Vendor / employee / client name; created if it does not exist. Clients come from the project when omitted. */
   partyName?: string | null
   category?: string | null
@@ -276,6 +283,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
       partyId,
       projectId: project?.id ?? null,
       budgetLineId: input.budgetLineId ?? null,
+      divisionId: project ? null : (input.divisionId ?? null),
       category: input.category || null,
       description: input.description || null,
       issueDate: input.issueDate || today(),
@@ -427,13 +435,13 @@ export async function payablesDue(d1: D1Database, dueBy: string) {
 
 const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint)\b/i
 
-/** Runs one read-only SELECT. Users (password hashes) cannot be read. */
+/** Runs one read-only SELECT. Users (password hashes) and payroll (owner/hr only) cannot be read. */
 export async function readonlyQuery(d1: D1Database, query: string, limit = 500) {
   const q = query.trim().replace(/;\s*$/, '')
   if (!/^(select|with)\b/i.test(q)) throw new FinanceError('only SELECT / WITH queries are allowed')
   if (q.includes(';')) throw new FinanceError('one statement only')
   if (FORBIDDEN.test(q)) throw new FinanceError('read-only: that keyword is not allowed')
-  if (/\busers\b|password_hash|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
+  if (/\busers\b|password_hash|payroll_months|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
   const { results } = await d1.prepare(`select * from (${q}) limit ${Math.min(limit, 1000)}`).all()
   return results
 }

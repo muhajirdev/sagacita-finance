@@ -36,7 +36,7 @@ function Transactions() {
     <div className="space-y-6">
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-500">Company spend (no project)</h2>
-        <TransactionForm companies={ref.companies} />
+        <TransactionForm companies={ref.companies} categories={ref.categories} />
         <p className="text-xs text-stone-500">Project spend and client invoices are recorded on the project page.</p>
       </section>
       <div className="flex flex-wrap gap-1">

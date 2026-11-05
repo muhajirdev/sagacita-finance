@@ -16,6 +16,7 @@ import {
   findProject,
   listCompanies,
   listDivisions,
+  listOpexCategories,
   listProjects,
   payablesDue,
   projectBudget,
@@ -43,7 +44,9 @@ Tables:
   parties       clients, vendors, employees: kind, name, npwp, bank_account
   divisions     agencies (Sagacita PR, SagaDigital, Arra Comms) -> company_id
   companies     PTs (tax reporting is per company)
+  opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
   activity_log  who changed what: at, actor, action, entity, entity_id, data (json)
+  (payroll_months and users exist but are not readable here)
 
 Rules:
   actual spend of a budget line = sum(dpp) of non-void 'out' transactions on it (cost before tax)
@@ -91,8 +94,13 @@ function createServer(env: Env) {
 
   server.registerTool(
     'list_reference',
-    { description: 'Companies (PTs) and divisions with their ids, needed by create_project and company spend.', inputSchema: {} },
-    async () => safe(async () => ({ companies: await listCompanies(db), divisions: await listDivisions(db) })),
+    { description: 'Companies (PTs), divisions and this year\'s company OpEx categories, with ids. Needed by create_project and company spend.', inputSchema: {} },
+    async () =>
+      safe(async () => ({
+        companies: await listCompanies(db),
+        divisions: await listDivisions(db),
+        opexCategories: await listOpexCategories(db),
+      })),
   )
 
   server.registerTool(
@@ -135,8 +143,9 @@ function createServer(env: Env) {
         project: z.string().optional().describe('Project code or id. Omit for company spend (then companyId is required).'),
         budgetLineId: z.number().int().optional().describe('From project_budget. Needed for project spend.'),
         companyId: z.number().int().optional(),
+        divisionId: z.number().int().optional().describe('For company spend: the division it belongs to, if any'),
         partyName: z.string().optional().describe('Vendor or employee name (created if new). Client comes from the project.'),
-        category: z.string().optional().describe('For company spend, e.g. "Office Rental"'),
+        category: z.string().optional().describe('For company spend: an opex category from list_reference, e.g. "Office Rental"'),
         description: z.string().optional(),
         number: z.string().optional().describe('Invoice / bill number on the paper'),
         issueDate: z.string().optional(),

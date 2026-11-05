@@ -39,6 +39,16 @@ CREATE TABLE `divisions` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `divisions_name_unique` ON `divisions` (`name`);--> statement-breakpoint
+CREATE TABLE `opex_budgets` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`category` text NOT NULL,
+	`fiscal_year` integer NOT NULL,
+	`annual_budget` integer DEFAULT 0 NOT NULL,
+	`is_fixed` integer DEFAULT false NOT NULL,
+	`sort_order` integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `opex_budgets_category_year` ON `opex_budgets` (`category`,`fiscal_year`);--> statement-breakpoint
 CREATE TABLE `parties` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`kind` text NOT NULL,
@@ -69,6 +79,21 @@ CREATE TABLE `payments` (
 --> statement-breakpoint
 CREATE INDEX `payments_transaction` ON `payments` (`transaction_id`);--> statement-breakpoint
 CREATE INDEX `payments_date` ON `payments` (`date`);--> statement-breakpoint
+CREATE TABLE `payroll_months` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`period` text NOT NULL,
+	`division_id` integer NOT NULL,
+	`net_salary` integer DEFAULT 0 NOT NULL,
+	`bpjs_tk` integer DEFAULT 0 NOT NULL,
+	`bpjs_kes` integer DEFAULT 0 NOT NULL,
+	`pph21` integer DEFAULT 0 NOT NULL,
+	`headcount` integer,
+	`notes` text,
+	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
+	FOREIGN KEY (`division_id`) REFERENCES `divisions`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `payroll_period_division` ON `payroll_months` (`period`,`division_id`);--> statement-breakpoint
 CREATE TABLE `projects` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`code` text NOT NULL,
@@ -98,6 +123,7 @@ CREATE TABLE `transactions` (
 	`party_id` integer,
 	`project_id` integer,
 	`budget_line_id` integer,
+	`division_id` integer,
 	`category` text,
 	`description` text,
 	`issue_date` text NOT NULL,
@@ -117,6 +143,7 @@ CREATE TABLE `transactions` (
 	FOREIGN KEY (`party_id`) REFERENCES `parties`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`budget_line_id`) REFERENCES `budget_lines`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`division_id`) REFERENCES `divisions`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

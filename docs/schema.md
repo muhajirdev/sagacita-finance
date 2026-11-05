@@ -22,8 +22,10 @@ finance data, and nothing that can be computed is stored as a status.
 | 12 | No attachment link | Receipt photo lives only in a chat | `attachment_url` |
 | 13 | Company OpEx is a separate actuals table | Two ways to record spend | Company spend is a transaction with no project and a `category` |
 
-Not carried over yet: payroll tables. They stay owner/hr only in the old app
-until someone needs them here.
+Payroll is kept as monthly totals per division in `payroll_months`, outside
+`transactions`, because salaries are owner/hr only. The MCP `query` tool cannot
+read it (or `users`). No screens yet for payroll, OpEx budgets, Performance or
+Cash Flow; the data model is ready for them.
 
 ## Tables
 
@@ -40,6 +42,8 @@ transactions  (the raw data, one wide row each)
   requested_by, attachment_url, source, created_by
 payments      (cash that moved; partial payment = several rows)
   transaction_id, direction, amount, date, method, reference
+opex_budgets  (company OpEx: category, fiscal_year, annual_budget, is_fixed)
+payroll_months (period, division, net_salary, bpjs_tk, bpjs_kes, pph21; owner/hr only)
 activity_log  (who changed what)
 users
 ```

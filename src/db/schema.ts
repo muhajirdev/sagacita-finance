@@ -25,7 +25,7 @@ const updatedAt = () =>
 
 // ---------------------------------------------------------------- users
 
-export const USER_ROLES = ['owner', 'finance', 'admin', 'bot'] as const
+export const USER_ROLES = ['owner', 'finance', 'admin', 'hr'] as const
 
 export const users = sqliteTable('users', {
   id: id(),
@@ -161,7 +161,9 @@ export const transactions = sqliteTable(
     partyId: integer('party_id').references(() => parties.id),
     projectId: integer('project_id').references(() => projects.id),
     budgetLineId: integer('budget_line_id').references(() => budgetLines.id),
-    /** Free category for spend that is not on a project (company opex): "Office Rental". */
+    /** For rows with no project (company spend): which division it belongs to, if any. */
+    divisionId: integer('division_id').references(() => divisions.id),
+    /** Company OpEx category for spend that is not on a project: matches opex_budgets.category. */
     category: text('category'),
     description: text('description'),
     issueDate: text('issue_date').notNull(),
@@ -237,3 +239,45 @@ export const activityLog = sqliteTable(
  * joined in and paid / outstanding / overdue worked out. The MCP `query` tool
  * points the agent here first.
  */
+
+// ---------------------------------------------------------------- company opex budgets
+
+/** Annual budget per company OpEx category. Actuals = non-project out transactions with that category. */
+export const opexBudgets = sqliteTable(
+  'opex_budgets',
+  {
+    id: id(),
+    category: text('category').notNull(),
+    fiscalYear: integer('fiscal_year').notNull(),
+    annualBudget: integer('annual_budget').notNull().default(0),
+    isFixed: integer('is_fixed', { mode: 'boolean' }).notNull().default(false), // e.g. Office Rental, budget / 12 each month
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [uniqueIndex('opex_budgets_category_year').on(t.category, t.fiscalYear)],
+)
+
+// ---------------------------------------------------------------- payroll (owner / hr only)
+
+/**
+ * Monthly payroll totals per division (Employee OpEx). Kept out of transactions on purpose:
+ * salary data is owner/hr only, and the MCP query tool cannot read this table.
+ */
+export const payrollMonths = sqliteTable(
+  'payroll_months',
+  {
+    id: id(),
+    period: text('period').notNull(), // YYYY-MM
+    divisionId: integer('division_id')
+      .notNull()
+      .references(() => divisions.id),
+    netSalary: integer('net_salary').notNull().default(0),
+    bpjsTk: integer('bpjs_tk').notNull().default(0), // company share
+    bpjsKes: integer('bpjs_kes').notNull().default(0), // company share
+    pph21: integer('pph21').notNull().default(0),
+    headcount: integer('headcount'),
+    notes: text('notes'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('payroll_period_division').on(t.period, t.divisionId)],
+)
+
