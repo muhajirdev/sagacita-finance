@@ -72,14 +72,22 @@ const actorField = z
   .min(1)
   .describe('Who asked, e.g. "whatsapp:Rina". Stored in the activity log.')
 
-function createServer(env: Env) {
+function createServer(env: Env, appUrl: string) {
+  const link = {
+    project: (code: string) => `${appUrl}/projects/${encodeURIComponent(code)}`,
+    payables: (dueBy: string) => `${appUrl}/payables?dueBy=${dueBy}`,
+  }
   const db = getDb(env.DB)
   const server = new McpServer({ name: 'sagacita-finance', version: '1.0.0' })
 
   server.registerTool(
     'describe_schema',
     { description: 'The data model, the v_transactions view and the money rules. Read this before writing SQL.', inputSchema: {} },
-    async () => text(SCHEMA_GUIDE),
+    async () =>
+      text(
+        `Web app: ${appUrl}  (project page: ${appUrl}/projects/<code>, payment run: ${appUrl}/payables?dueBy=YYYY-MM-DD, all transactions: ${appUrl}/transactions). Share these links when a person wants to see details.\n\n` +
+          SCHEMA_GUIDE,
+      ),
   )
 
   server.registerTool(
@@ -106,7 +114,7 @@ function createServer(env: Env) {
   server.registerTool(
     'list_projects',
     { description: 'All projects with client, division and budget totals (charge, ceiling, actual, remaining, % used, margin).', inputSchema: {} },
-    async () => safe(() => listProjects(db)),
+    async () => safe(async () => (await listProjects(db)).map((p) => ({ ...p, url: link.project(p.code) }))),
   )
 
   server.registerTool(
@@ -118,7 +126,7 @@ function createServer(env: Env) {
     async ({ project }) =>
       safe(async () => {
         const p = await findProject(db, project)
-        return { project: p, ...(await projectBudget(db, p.id)) }
+        return { project: p, url: link.project(p.code), ...(await projectBudget(db, p.id)) }
       }),
   )
 
@@ -128,7 +136,7 @@ function createServer(env: Env) {
       description: 'Approved, unpaid outgoing transactions due by a date (or with no due date): the list for a payment run.',
       inputSchema: { dueBy: z.string().describe('YYYY-MM-DD, usually the coming Wednesday or Friday') },
     },
-    async ({ dueBy }) => safe(() => payablesDue(env.DB, dueBy)),
+    async ({ dueBy }) => safe(async () => ({ url: link.payables(dueBy), ...(await payablesDue(env.DB, dueBy)) })),
   )
 
   server.registerTool(
@@ -161,8 +169,9 @@ function createServer(env: Env) {
     },
     async ({ actor, project, ...input }) =>
       safe(async () => {
-        const projectId = project ? (await findProject(db, project)).id : null
-        return recordTransaction(db, actor, { ...input, projectId, source: 'whatsapp' })
+        const p = project ? await findProject(db, project) : null
+        const result = await recordTransaction(db, actor, { ...input, projectId: p?.id ?? null, source: 'whatsapp' })
+        return { ...result, url: p ? link.project(p.code) : `${appUrl}/transactions` }
       }),
   )
 
@@ -248,5 +257,6 @@ export async function handleMcpRequest(request: Request, env: Env): Promise<Resp
       headers: { 'content-type': 'application/json', 'www-authenticate': 'Bearer' },
     })
   }
-  return createMcpHandler(() => createServer(env), { legacy: 'stateless' }).fetch(request)
+  const appUrl = env.APP_URL || new URL(request.url).origin
+  return createMcpHandler(() => createServer(env, appUrl), { legacy: 'stateless' }).fetch(request)
 }

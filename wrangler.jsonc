@@ -5,6 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
   "observability": { "enabled": true },
+  "vars": { "APP_URL": "https://sagacita-finance.qalam.workers.dev" },
   "d1_databases": [
     {
       "binding": "DB",
