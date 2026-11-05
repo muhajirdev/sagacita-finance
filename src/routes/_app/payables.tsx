@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { TransactionTable } from '#/components/transactions'
+import { PageHeader } from '#/components/ui'
 import { nextWeekday, rp } from '#/lib/format'
 import { getPayables } from '#/server/fns'
 
@@ -17,30 +18,28 @@ function Payables() {
   const { dueBy = nextWeekday(3) } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-semibold text-stone-500">
-          Payment run date
-          <input
-            className="input mt-1"
-            type="date"
-            value={dueBy}
-            onChange={(e) => navigate({ search: { dueBy: e.target.value } })}
-          />
-        </label>
-        <button className="btn-ghost" onClick={() => navigate({ search: { dueBy: nextWeekday(3) } })}>
+    <>
+      <PageHeader
+        title="Payment run"
+        sub="Approved bills, advances and reimbursements not fully paid, due by this date or with no due date."
+        right={
+          <div className="card px-5 py-3 text-right">
+            <div className="eyebrow">Cash needed</div>
+            <div className="text-[24px] font-semibold tracking-[-0.02em] tabular-nums">{rp(data.totalOutstanding)}</div>
+          </div>
+        }
+      />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <input className="input w-auto" type="date" value={dueBy} onChange={(e) => navigate({ search: { dueBy: e.target.value } })} />
+        <button className="btn-ghost py-1.5" onClick={() => navigate({ search: { dueBy: nextWeekday(3) } })}>
           Next Wednesday
         </button>
-        <button className="btn-ghost" onClick={() => navigate({ search: { dueBy: nextWeekday(5) } })}>
+        <button className="btn-ghost py-1.5" onClick={() => navigate({ search: { dueBy: nextWeekday(5) } })}>
           Next Friday
         </button>
-        <div className="ml-auto text-right">
-          <div className="text-xs text-stone-500">Cash needed</div>
-          <div className="text-2xl font-semibold tabular-nums">{rp(data.totalOutstanding)}</div>
-        </div>
+        <span className="ml-auto text-[13px] text-muted">{data.items.length} items</span>
       </div>
-      <p className="text-sm text-stone-500">Approved bills, advances and reimbursements not fully paid, due by this date or with no due date.</p>
       <TransactionTable rows={data.items} />
-    </div>
+    </>
   )
 }

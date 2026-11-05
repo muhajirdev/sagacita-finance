@@ -18,7 +18,12 @@ function Login() {
           e.preventDefault()
           const f = new FormData(e.currentTarget)
           setBusy(true)
-          const res = await login({ data: { email: String(f.get('email')), password: String(f.get('password')) } })
+          const res = await login({
+            data: {
+              email: String(f.get('email')),
+              password: String(f.get('password')),
+            },
+          })
           setBusy(false)
           if (!res.ok) return setError(res.error)
           await router.navigate({ to: '/' })
@@ -30,7 +35,7 @@ function Login() {
         <button className="btn w-full" disabled={busy}>
           Sign in
         </button>
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-sm text-bad">{error}</p>}
       </form>
     </div>
   )

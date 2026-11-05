@@ -73,14 +73,22 @@ export const getDashboard = createServerFn().handler(async () => {
   const today = new Date().toISOString().slice(0, 10)
   const inTx = await listTransactions(env.DB, { direction: 'in', limit: 1000 })
   const live = inTx.filter((t) => t.status !== 'void')
-  const due = await payablesDue(env.DB, today)
+  const friday = new Date()
+  friday.setDate(friday.getDate() + ((5 - friday.getDay() + 7) % 7))
+  const weekEnd = friday.toISOString().slice(0, 10)
+  const due = await payablesDue(env.DB, weekEnd)
+  const overdue = live.filter((t) => t.overdue).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  const recent = await listTransactions(env.DB, { limit: 8 })
   return {
+    today,
+    weekEnd,
     projects,
     billing: live.reduce((a, t) => a + t.dpp, 0),
     collected: live.reduce((a, t) => a + t.paid, 0),
-    overdueInvoices: live.filter((t) => t.overdue).length,
-    overBudget: projects.filter((p) => p.totals.usedPct > 100).length,
-    payablesToday: due.totalOutstanding,
+    receivable: live.reduce((a, t) => a + t.outstanding, 0),
+    overdue: { count: overdue.length, amount: overdue.reduce((a, t) => a + t.outstanding, 0), items: overdue.slice(0, 5) },
+    payables: { amount: due.totalOutstanding, count: due.items.length, items: due.items.slice(0, 5) },
+    recent,
   }
 })
 

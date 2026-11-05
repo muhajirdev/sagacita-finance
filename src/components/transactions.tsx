@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { PPH_TYPES, TRANSACTION_KINDS } from '#/db/schema'
 import type { TransactionRow } from '#/lib/finance'
+import { StatusPill } from '#/components/ui'
 import { KIND_LABEL, rp } from '#/lib/format'
 import { recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
 
@@ -18,7 +19,7 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
   }
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full">
+      <table className="table">
         <thead>
           <tr>
             <th className="th">Date</th>
@@ -38,31 +39,33 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
             <tr key={t.id} className={t.status === 'void' ? 'opacity-40' : ''}>
               <td className="td whitespace-nowrap">
                 {t.issue_date}
-                {t.due_date && <div className={`text-xs ${t.overdue ? 'font-semibold text-red-700' : 'text-stone-500'}`}>due {t.due_date}</div>}
+                {t.due_date && <div className={`text-[12px] ${t.overdue ? 'font-semibold text-bad' : 'text-muted'}`}>due {t.due_date}</div>}
               </td>
               <td className="td">
                 {KIND_LABEL[t.kind]}
-                <div className="text-xs text-stone-500">{t.direction === 'in' ? 'money in' : 'money out'}</div>
+                <div className="text-[12px] text-muted">{t.direction === 'in' ? 'money in' : 'money out'}</div>
               </td>
               {showProject && <td className="td">{t.project_code ?? t.category ?? '—'}</td>}
               <td className="td">
                 {t.party ?? '—'}
-                <div className="text-xs text-stone-500">{t.budget_line ?? ''}</div>
+                <div className="text-[12px] text-muted">{t.budget_line ?? ''}</div>
               </td>
               <td className="td max-w-56">{t.description}</td>
               <td className="td num">{rp(t.dpp)}</td>
               <td className="td num">
                 {rp(t.total)}
                 {(t.ppn > 0 || t.pph > 0) && (
-                  <div className="text-xs text-stone-500">
+                  <div className="text-[12px] text-muted">
                     +PPN {rp(t.ppn)}
                     {t.pph > 0 && ` −${t.pph_type.toUpperCase()} ${rp(t.pph)}`}
                   </div>
                 )}
               </td>
               <td className="td num">{rp(t.outstanding)}</td>
-              <td className="td">{t.status}</td>
-              <td className="td whitespace-nowrap space-x-1">
+              <td className="td">
+                <StatusPill status={t.status} overdue={!!t.overdue} />
+              </td>
+              <td className="td whitespace-nowrap space-x-1 text-right">
                 {t.status === 'draft' && (
                   <button className="btn-ghost" onClick={() => act(() => setStatusFn({ data: { id: t.id, status: 'approved' } }))}>
                     Approve
@@ -72,15 +75,32 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                   <button
                     className="btn-ghost"
                     onClick={() => {
-                      const v = prompt(`Amount ${t.direction === 'in' ? 'received' : 'paid'} (outstanding ${rp(t.outstanding)})`, String(t.outstanding))
-                      if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v) } }))
+                      const v = prompt(
+                        `Amount ${t.direction === 'in' ? 'received' : 'paid'} (outstanding ${rp(t.outstanding)})`,
+                        String(t.outstanding),
+                      )
+                      if (v)
+                        act(() =>
+                          recordPaymentFn({
+                            data: { transactionId: t.id, amount: Number(v) },
+                          }),
+                        )
                     }}
                   >
                     {t.direction === 'in' ? 'Received' : 'Pay'}
                   </button>
                 )}
                 {t.kind === 'cash_advance' && t.status === 'approved' && t.outstanding === 0 && (
-                  <button className="btn-ghost" onClick={() => act(() => setStatusFn({ data: { id: t.id, status: 'settled' } }))}>
+                  <button
+                    className="btn-ghost"
+                    onClick={() =>
+                      act(() =>
+                        setStatusFn({
+                          data: { id: t.id, status: 'settled' },
+                        }),
+                      )
+                    }
+                  >
                     Settle
                   </button>
                 )}
@@ -97,7 +117,7 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
           ))}
           {rows.length === 0 && (
             <tr>
-              <td className="td text-stone-500" colSpan={10}>
+              <td className="td text-muted" colSpan={10}>
                 Nothing here yet.
               </td>
             </tr>
@@ -127,7 +147,7 @@ export function TransactionForm({
   const [msg, setMsg] = useState('')
   return (
     <form
-      className="card grid gap-3 p-4 md:grid-cols-4"
+      className="card grid gap-4 p-5 md:grid-cols-4"
       onSubmit={async (e) => {
         e.preventDefault()
         const form = e.currentTarget
@@ -161,9 +181,9 @@ export function TransactionForm({
         }
       }}
     >
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         Kind
-        <select className="input mt-1" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+        <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           {TRANSACTION_KINDS.filter((k) => projectId || k !== 'client_invoice').map((k) => (
             <option key={k} value={k}>
               {KIND_LABEL[k]}
@@ -173,9 +193,9 @@ export function TransactionForm({
       </label>
       {projectId ? (
         kind !== 'client_invoice' && (
-          <label className="text-xs font-semibold text-stone-500">
+          <label className="field">
             Budget line
-            <select className="input mt-1" name="budgetLineId" required>
+            <select className="input" name="budgetLineId" required>
               {lines.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -186,9 +206,9 @@ export function TransactionForm({
         )
       ) : (
         <>
-          <label className="text-xs font-semibold text-stone-500">
+          <label className="field">
             Company
-            <select className="input mt-1" name="companyId" required>
+            <select className="input" name="companyId" required>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -196,9 +216,9 @@ export function TransactionForm({
               ))}
             </select>
           </label>
-          <label className="text-xs font-semibold text-stone-500">
+          <label className="field">
             Category
-            <input className="input mt-1" name="category" list="opex-categories" placeholder="Office Rental" />
+            <input className="input" name="category" list="opex-categories" placeholder="Office Rental" />
             <datalist id="opex-categories">
               {categories.map((c) => (
                 <option key={c.id} value={c.category} />
@@ -208,53 +228,53 @@ export function TransactionForm({
         </>
       )}
       {kind !== 'client_invoice' && (
-        <label className="text-xs font-semibold text-stone-500">
+        <label className="field">
           {kind === 'vendor_bill' ? 'Vendor' : 'Employee'}
-          <input className="input mt-1" name="partyName" required />
+          <input className="input" name="partyName" required />
         </label>
       )}
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         Number
-        <input className="input mt-1" name="number" />
+        <input className="input" name="number" />
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         DPP (before tax)
-        <input className="input mt-1" name="dpp" type="number" min="0" required />
+        <input className="input" name="dpp" type="number" min="0" required />
       </label>
-      <label className="flex items-end gap-2 pb-2 text-sm">
+      <label className="flex items-end gap-2 pb-2.5 text-[13px] text-ink-2">
         <input type="checkbox" name="withPpn" defaultChecked /> PPN 11%
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         PPh
-        <select className="input mt-1" name="pphType" defaultValue="none">
+        <select className="input" name="pphType" defaultValue="none">
           {PPH_TYPES.map((p) => (
             <option key={p}>{p}</option>
           ))}
         </select>
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         PPh amount (optional)
-        <input className="input mt-1" name="pph" type="number" min="0" placeholder="default rate" />
+        <input className="input" name="pph" type="number" min="0" placeholder="default rate" />
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         Issue date
-        <input className="input mt-1" name="issueDate" type="date" />
+        <input className="input" name="issueDate" type="date" />
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         Due date
-        <input className="input mt-1" name="dueDate" type="date" />
+        <input className="input" name="dueDate" type="date" />
       </label>
-      <label className="text-xs font-semibold text-stone-500">
+      <label className="field">
         Requested by
-        <input className="input mt-1" name="requestedBy" />
+        <input className="input" name="requestedBy" />
       </label>
-      <label className="text-xs font-semibold text-stone-500 md:col-span-2">
+      <label className="field md:col-span-2">
         Description
-        <input className="input mt-1" name="description" />
+        <input className="input" name="description" />
       </label>
       <div className="flex items-end gap-3 md:col-span-2">
         <button className="btn">Record</button>
-        {msg && <span className="text-sm text-stone-600">{msg}</span>}
+        {msg && <span className="text-sm text-ink-2">{msg}</span>}
       </div>
     </form>
   )
