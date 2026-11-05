@@ -17,6 +17,7 @@ import {
   listTransactions,
   updateBudgetLine,
   setOpexBudget,
+  setUserRole,
   updateProject,
   updateTransaction,
 } from '#/lib/finance'
@@ -324,7 +325,7 @@ export const setRoleFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const me = await requireRole('owner')
     if (me.id === data.id && data.role !== 'owner') throw new Error("You can't remove your own owner role")
-    await getDb().update(users).set({ role: data.role }).where(eq(users.id, data.id))
+    await setUserRole(getDb(), me.email, data.id, data.role)
     return { ok: true }
   })
 

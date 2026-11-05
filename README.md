@@ -33,6 +33,7 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | `set_project_status` | Close or reopen a project |
 | `update_project` | Edit a project: number, name, client, division, type, dates |
 | `set_opex_budget` | Annual budget of a Company OpEx category |
+| `list_users`, `add_user`, `set_user_role`, `reset_user_password`, `remove_user` | Web app logins. Passwords are random one-time ones, returned once; hashes are never returned; last owner is protected |
 | `create_party` | Add a client, vendor or employee (with NPWP, bank account) |
 | `update_party` | NPWP, bank account, name, notes of a client / vendor / employee |
 | `payroll_summary`, `record_payroll` | Employee OpEx: monthly payroll totals per division |

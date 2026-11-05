@@ -18,11 +18,14 @@ import {
   payments,
   projects,
   transactions,
+  users,
+  type USER_ROLES,
   type PARTY_KINDS,
   type PROJECT_TYPES,
   type TRANSACTION_KINDS,
   type TRANSACTION_STATUSES,
 } from '#/db/schema'
+import { hashPassword } from '#/lib/auth'
 import type { Db } from '#/lib/db'
 import { computeTax, type PphType } from '#/lib/tax'
 
@@ -970,4 +973,81 @@ export async function listDocuments(db: Db, appUrl: string, entity: DocEntity, e
 
 export async function getDocument(db: Db, id: number) {
   return db.select().from(documents).where(eq(documents.id, id)).get()
+}
+
+// ------------------------------------------------------------ users (web app sign-in)
+
+type Role = (typeof USER_ROLES)[number]
+const userColumns = { id: users.id, email: users.email, name: users.name, role: users.role, createdAt: users.createdAt }
+
+/** A random one-time password, shown once to the person who asked. */
+export function temporaryPassword() {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+  const bytes = crypto.getRandomValues(new Uint8Array(14))
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+}
+
+async function findUser(db: Db, ref: string | number) {
+  const row = await db
+    .select(userColumns)
+    .from(users)
+    .where(typeof ref === 'number' ? eq(users.id, ref) : sql`lower(${users.email}) = lower(${ref})`)
+    .get()
+  if (!row) throw new FinanceError(`no user ${ref}`)
+  return row
+}
+
+async function ownerCount(db: Db) {
+  const r = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(users)
+    .where(eq(users.role, 'owner'))
+    .get()
+  return r?.n ?? 0
+}
+
+export function listUsers(db: Db) {
+  return db.select(userColumns).from(users).orderBy(asc(users.createdAt))
+}
+
+export async function addUser(db: Db, actor: Actor, input: { email: string; name: string; role: Role }) {
+  const email = input.email.trim().toLowerCase()
+  if (await db.select({ id: users.id }).from(users).where(eq(users.email, email)).get())
+    throw new FinanceError('that email already has an account')
+  const password = temporaryPassword()
+  const [row] = await db
+    .insert(users)
+    .values({ email, name: input.name.trim(), role: input.role, passwordHash: await hashPassword(password) })
+    .returning(userColumns)
+  await log(db, actor, 'create', 'users', row.id, { email, role: input.role })
+  return { user: row, temporaryPassword: password }
+}
+
+export async function setUserRole(db: Db, actor: Actor, ref: string | number, role: Role) {
+  const u = await findUser(db, ref)
+  if (u.role === 'owner' && role !== 'owner' && (await ownerCount(db)) <= 1) throw new FinanceError('cannot remove the last owner')
+  const [row] = await db.update(users).set({ role }).where(eq(users.id, u.id)).returning(userColumns)
+  await log(db, actor, 'update', 'users', u.id, { role })
+  return row
+}
+
+export async function resetUserPassword(db: Db, actor: Actor, ref: string | number) {
+  const u = await findUser(db, ref)
+  const password = temporaryPassword()
+  await db
+    .update(users)
+    .set({ passwordHash: await hashPassword(password) })
+    .where(eq(users.id, u.id))
+  await log(db, actor, 'reset_password', 'users', u.id, { email: u.email })
+  return { user: u, temporaryPassword: password }
+}
+
+export async function removeUser(db: Db, actor: Actor, ref: string | number) {
+  const u = await findUser(db, ref)
+  if (u.role === 'owner' && (await ownerCount(db)) <= 1) throw new FinanceError('cannot remove the last owner')
+  await db.update(transactions).set({ createdBy: null }).where(eq(transactions.createdBy, u.id))
+  await db.update(payments).set({ createdBy: null }).where(eq(payments.createdBy, u.id))
+  await db.delete(users).where(eq(users.id, u.id))
+  await log(db, actor, 'delete', 'users', u.id, { email: u.email, role: u.role })
+  return { removed: u.email }
 }

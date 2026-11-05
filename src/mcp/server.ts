@@ -6,7 +6,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import { DOCUMENT_ENTITIES, PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES } from '#/db/schema'
+import { DOCUMENT_ENTITIES, PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, USER_ROLES } from '#/db/schema'
 import { bearerMatches } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -14,6 +14,11 @@ import {
   addBudgetLine,
   createProject,
   findProject,
+  addUser,
+  listUsers,
+  removeUser,
+  resetUserPassword,
+  setUserRole,
   setOpexBudget,
   updateProject,
   listCompanies,
@@ -51,7 +56,7 @@ const GLOSSARY = `Talk to people in the web app's words, not the database's. Dat
   Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
   Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
   payroll_months -> "Employee OpEx". opex_budgets -> "Company OpEx". divisions -> agencies. companies -> PTs.
-  pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
+  users -> "User Management". pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
   Money: say "Rp 1.2B" for billion (miliar) and "Rp 350M" for million (juta), or write it out in full.
 Never show ids, table or column names to people unless they ask.`
 
@@ -442,6 +447,60 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => setOpexBudget(db, actor, input)),
+  )
+
+  const userRef = z.string().describe('User email (or numeric id)')
+  const toRef = (r: string) => (/^\d+$/.test(r) ? Number(r) : r)
+
+  server.registerTool(
+    'list_users',
+    {
+      description: 'Who can sign in to the web app, with their role (owner, finance, admin, hr). Never includes passwords.',
+      inputSchema: {},
+    },
+    async () => safe(() => listUsers(db)),
+  )
+
+  server.registerTool(
+    'add_user',
+    {
+      description:
+        'Give someone a web app login. Returns a one-time temporary password: send it to that person privately, ' +
+        'never in a group chat, and tell them to change it. Roles: owner = everything; finance = projects, budget, invoicing, expenses, reports; ' +
+        'admin = projects, budget, expenses, clients; hr = Employee OpEx and Company OpEx.',
+      inputSchema: { actor: actorField, email: z.string().email(), name: z.string().min(1), role: z.enum(USER_ROLES) },
+    },
+    async ({ actor, ...input }) => safe(async () => ({ ...(await addUser(db, actor, input)), login: `${appUrl}/login` })),
+  )
+
+  server.registerTool(
+    'set_user_role',
+    {
+      description: 'Change what a user can see in the web app. The last owner cannot be demoted.',
+      inputSchema: { actor: actorField, user: userRef, role: z.enum(USER_ROLES) },
+    },
+    async ({ actor, user, role }) => safe(() => setUserRole(db, actor, toRef(user), role)),
+  )
+
+  server.registerTool(
+    'reset_user_password',
+    {
+      description:
+        "Reset a user's web app password to a new random one-time password, returned once. Send it only to that person, privately. " +
+        'You cannot choose the password.',
+      inputSchema: { actor: actorField, user: userRef },
+    },
+    async ({ actor, user }) => safe(async () => ({ ...(await resetUserPassword(db, actor, toRef(user))), login: `${appUrl}/login` })),
+  )
+
+  server.registerTool(
+    'remove_user',
+    {
+      description:
+        "Take away someone's web app login. Their past entries stay. The last owner cannot be removed. Confirm with the person asking first.",
+      inputSchema: { actor: actorField, user: userRef },
+    },
+    async ({ actor, user }) => safe(() => removeUser(db, actor, toRef(user))),
   )
 
   server.registerTool(
