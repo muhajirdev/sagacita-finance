@@ -99,7 +99,11 @@ function Projects() {
           </thead>
           <tbody>
             {projects.map((p) => (
-              <tr key={p.id}>
+              <tr
+                key={p.id}
+                className="cursor-pointer"
+                onClick={() => router.navigate({ to: '/projects/$code', params: { code: p.code } })}
+              >
                 <td className="td">
                   <Link to="/projects/$code" params={{ code: p.code }} className="font-medium hover:text-accent">
                     {p.name}
@@ -123,7 +127,13 @@ function Projects() {
                   <StatusPill status={p.status} />
                 </td>
                 <td className="td">
-                  <button className="btn-ghost" onClick={() => setEdit(p)}>
+                  <button
+                    className="btn-ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEdit(p)
+                    }}
+                  >
                     Edit
                   </button>
                 </td>

@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 
 import { MONTHS, PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
@@ -11,6 +11,7 @@ export const Route = createFileRoute('/_app/cashflow')({
 
 function Cashflow() {
   const d = Route.useLoaderData()
+  const navigate = useNavigate()
   const peak = Math.max(1, ...d.inM, ...d.outM)
   return (
     <>
@@ -19,11 +20,21 @@ function Cashflow() {
         <Stat label="Total Collected" value={rpShort(d.collected)} sub="payments received" tone="good" />
         <Stat label="Total Expenses Paid Out" value={rpShort(d.paidOut)} sub="paid to vendors and staff" />
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Stat label="Next 30 days" value={rpShort(d.next30)} sub="expected incoming" tone="accent" />
-        <Stat label="Next 90 days" value={rpShort(d.next90)} sub="expected incoming" tone="accent" />
-        <Stat label="Next 180 days" value={rpShort(d.next180)} sub="expected incoming" tone="accent" />
+      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat
+          label="Overdue now"
+          value={rpShort(d.overdue)}
+          sub={`${d.overdueCount} client invoices past due`}
+          tone={d.overdue ? 'bad' : undefined}
+        />
+        <Stat label="Due in next 30 days" value={rpShort(d.next30)} sub="expected incoming" tone="accent" />
+        <Stat label="Due in next 90 days" value={rpShort(d.next90)} sub="expected incoming" tone="accent" />
+        <Stat label="Due in next 180 days" value={rpShort(d.next180)} sub="expected incoming" tone="accent" />
       </div>
+      <p className="mt-2 text-[12px] text-muted">
+        Expected incoming counts unpaid client invoices by due date. Overdue ones are shown separately; contract value not yet invoiced is
+        on Invoicing → Uninvoiced Balance.
+      </p>
 
       <div className="card mt-10 p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -72,7 +83,7 @@ function Cashflow() {
           </thead>
           <tbody>
             {d.byProject.map((p) => (
-              <tr key={p.code}>
+              <tr key={p.code} className="cursor-pointer" onClick={() => navigate({ to: '/projects/$code', params: { code: p.code } })}>
                 <td className="td">
                   <div className="font-medium">{p.client}</div>
                   <div className="text-[12px] text-muted">{p.name}</div>

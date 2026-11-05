@@ -85,7 +85,7 @@ function Invoicing() {
                     <span className="pill-warn">Not yet invoiced</span>
                   )
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} className="cursor-pointer" onClick={() => navigate({ to: '/budget', search: { project: p.code } })}>
                     <td className="td">
                       <div className="font-medium">{p.client}</div>
                       <div className="text-[12px] text-muted">
@@ -120,7 +120,13 @@ function Invoicing() {
             </thead>
             <tbody>
               {list.map((i) => (
-                <tr key={i.id}>
+                <tr
+                  key={i.id}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    i.paid === 0 ? setForm(i) : i.project_code && navigate({ to: '/projects/$code', params: { code: i.project_code } })
+                  }
+                >
                   <td className="td whitespace-nowrap font-medium tabular-nums">{i.number ?? '—'}</td>
                   <td className="td">
                     {i.client}
@@ -134,7 +140,7 @@ function Invoicing() {
                   <td className="td">
                     <InvoiceStatus t={i} />
                   </td>
-                  <td className="td whitespace-nowrap text-right">
+                  <td className="td whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                     {i.outstanding > 0 && (
                       <>
                         {i.paid === 0 && (

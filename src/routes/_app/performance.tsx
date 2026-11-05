@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 
 import { PageHeader, Stat, pct } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
@@ -11,6 +11,7 @@ export const Route = createFileRoute('/_app/performance')({
 
 function Performance() {
   const { year, rows, owner } = Route.useLoaderData()
+  const navigate = useNavigate()
   const sum = (k: 'billing' | 'allocExp' | 'actualExp') => rows.reduce((a, r) => a + r[k], 0)
   const billing = sum('billing')
   const estExp = sum('allocExp')
@@ -41,7 +42,7 @@ function Performance() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="cursor-pointer" onClick={() => navigate({ to: '/budget', search: { project: r.code } })}>
                 <td className="td">
                   <div className="font-medium">{r.client}</div>
                   <div className="text-[12px] text-muted">{r.name}</div>

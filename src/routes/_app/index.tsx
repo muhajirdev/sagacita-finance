@@ -1,4 +1,4 @@
-import { Link, createFileRoute, redirect } from '@tanstack/react-router'
+import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 
 import { PageHeader, Section, UsageBar } from '#/components/ui'
 import { KIND_LABEL, rp, rpShort } from '#/lib/format'
@@ -38,6 +38,7 @@ const fmtDate = (d: string | null) =>
 
 function Dashboard() {
   const d = Route.useLoaderData()
+  const navigate = useNavigate()
   const active = d.projects.filter((p) => p.status !== 'closed')
   const watch = [...d.projects].sort((a, b) => b.totals.usedPct - a.totals.usedPct).slice(0, 6)
   const over = d.projects.filter((p) => p.totals.usedPct > 100).length
@@ -49,7 +50,11 @@ function Dashboard() {
 
   return (
     <>
-      <PageHeader eyebrow={today} title="Overview" sub={`${active.length} active projects across all divisions. M = miliar, jt = juta.`} />
+      <PageHeader
+        eyebrow={today}
+        title="Overview"
+        sub={`${active.length} active projects across all divisions. B = billion (miliar), M = million (juta).`}
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Billed" value={d.billing} sub="client invoices, before PPN" />
@@ -168,7 +173,11 @@ function Dashboard() {
             <table className="table">
               <tbody>
                 {d.recent.map((t) => (
-                  <tr key={t.id}>
+                  <tr
+                    key={t.id}
+                    className="cursor-pointer"
+                    onClick={() => t.project_code && navigate({ to: '/projects/$code', params: { code: t.project_code } })}
+                  >
                     <td className="td w-20 text-[12px] text-muted">{fmtDate(t.issue_date)}</td>
                     <td className="td">
                       <div className="font-medium">{t.party ?? t.client ?? t.category ?? '—'}</div>

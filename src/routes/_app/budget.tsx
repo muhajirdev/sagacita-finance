@@ -1,4 +1,4 @@
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 
@@ -49,6 +49,7 @@ function Budget() {
 }
 
 function Overview({ projects }: { projects: Awaited<ReturnType<typeof getProjects>> }) {
+  const navigate = useNavigate()
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -65,7 +66,7 @@ function Overview({ projects }: { projects: Awaited<ReturnType<typeof getProject
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr key={p.id}>
+            <tr key={p.id} className="cursor-pointer" onClick={() => navigate({ to: '/budget', search: { project: p.code } })}>
               <td className="td font-medium">{p.client}</td>
               <td className="td">
                 <Link to="/budget" search={{ project: p.code }} className="hover:text-accent">
@@ -139,7 +140,7 @@ function Detail({ d }: { d: Awaited<ReturnType<typeof getProject>> }) {
           </thead>
           <tbody>
             {budget.lines.map((l) => (
-              <tr key={l.id}>
+              <tr key={l.id} className="cursor-pointer" onClick={() => setEditing(l)}>
                 <td className="td whitespace-nowrap font-medium">
                   {l.name} {l.asfAmount > 0 && <span className="pill-neutral ml-1">ASF {rp(l.asfAmount)}</span>}
                 </td>

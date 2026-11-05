@@ -192,8 +192,16 @@ export const getCashflow = createServerFn()
     const outM = Array(12).fill(0) as number[]
     for (const r of monthly.results) (r.direction === 'in' ? inM : outM)[r.m - 1] = r.v
     const total = (dir: 'in' | 'out') => totals.results.find((r) => r.direction === dir)?.v ?? 0
+    const overdue = await d1
+      .prepare(
+        `select coalesce(sum(outstanding), 0) v, count(*) n from v_transactions
+         where direction = 'in' and status != 'void' and overdue = 1`,
+      )
+      .first<{ v: number; n: number }>()
     return {
       year,
+      overdue: overdue?.v ?? 0,
+      overdueCount: overdue?.n ?? 0,
       collected: total('in'),
       paidOut: total('out'),
       next30: await horizon(30),

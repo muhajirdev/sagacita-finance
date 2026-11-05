@@ -41,6 +41,18 @@ import {
   updateTransaction,
 } from '#/lib/finance'
 
+const GLOSSARY = `Talk to people in the web app's words, not the database's. Database term -> what people call it:
+  budget_lines -> "SOW items" (the project's Budget Control page lists them). ceiling = "max expense + ASF".
+  parties -> clients, vendors or employees (by kind). The client list page is "Client List".
+  client_invoice -> "Invoice" (Invoicing page). dpp -> "net, before VAT". ppn -> "VAT 11%". pph -> "PPh" (23, 4(2), 26).
+  vendor_bill -> "Vendor invoice" / "Expense". cash_advance -> "Cash advance". reimbursement -> "Reimbursement".
+  Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
+  Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
+  payroll_months -> "Employee OpEx". opex_budgets -> "Company OpEx". divisions -> agencies. companies -> PTs.
+  pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
+  Money: say "Rp 1.2B" for billion (miliar) and "Rp 350M" for million (juta), or write it out in full.
+Never show ids, table or column names to people unless they ask.`
+
 const SCHEMA_GUIDE = `Sagacita Finance data model (SQLite / Cloudflare D1). Money is integer rupiah. Dates are YYYY-MM-DD.
 
 START HERE: v_transactions — every transaction with names joined in and paid / outstanding / overdue computed.
@@ -96,7 +108,7 @@ function createServer(env: Env, appUrl: string) {
     payables: (dueBy: string) => `${appUrl}/payables?dueBy=${dueBy}`,
   }
   const db = getDb(env.DB)
-  const server = new McpServer({ name: 'sagacita-finance', version: '1.0.0' })
+  const server = new McpServer({ name: 'sagacita-finance', version: '1.0.0' }, { instructions: GLOSSARY })
 
   server.registerTool(
     'describe_schema',
@@ -104,7 +116,9 @@ function createServer(env: Env, appUrl: string) {
     async () =>
       text(
         `Web app: ${appUrl}  (project page: ${appUrl}/projects/<code>, payment run: ${appUrl}/payables?dueBy=YYYY-MM-DD, all transactions: ${appUrl}/transactions). Share these links when a person wants to see details.\n\n` +
-          SCHEMA_GUIDE,
+          SCHEMA_GUIDE +
+          '\n\nGLOSSARY\n' +
+          GLOSSARY,
       ),
   )
 

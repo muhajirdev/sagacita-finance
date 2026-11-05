@@ -86,7 +86,11 @@ function Expenses() {
             {list.map((t) => {
               const s = stage(t)
               return (
-                <tr key={t.id}>
+                <tr
+                  key={t.id}
+                  className="cursor-pointer"
+                  onClick={() => t.project_code && navigate({ to: '/projects/$code', params: { code: t.project_code } })}
+                >
                   <td className="td whitespace-nowrap">
                     {t.project_code ?? 'Company'}
                     <div className="text-[12px] text-muted">{t.client ?? t.category}</div>
@@ -98,7 +102,7 @@ function Expenses() {
                   </td>
                   <td className="td max-w-64">
                     {t.description}
-                    <div className="mt-0.5 flex gap-2 text-[12px]">
+                    <div className="mt-0.5 flex gap-2 text-[12px]" onClick={(e) => e.stopPropagation()}>
                       {t.attachment_url && (
                         <a
                           className="text-accent"
@@ -134,7 +138,7 @@ function Expenses() {
                   </td>
                   <td className="td">{t.requested_by ?? '—'}</td>
                   <td className="td">{STAGE_PILL[s]}</td>
-                  <td className="td whitespace-nowrap text-right">
+                  <td className="td whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                     {s === 'request' && (
                       <button className="btn-ghost mr-1" onClick={() => act(() => setStatusFn({ data: { id: t.id, status: 'approved' } }))}>
                         Approve

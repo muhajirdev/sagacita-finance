@@ -91,7 +91,7 @@ function CompanyOpex() {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-[12px] text-muted">Click a budget to change it. Monthly cells are in juta (jt) or miliar (M).</p>
+      <p className="mt-3 text-[12px] text-muted">Click a budget to change it. Monthly cells: M = million (juta), B = billion (miliar).</p>
 
       {record && (
         <Modal title="Record company spend" onClose={() => setRecord(false)}>
