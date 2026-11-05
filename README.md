@@ -15,7 +15,7 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | Tool | What it does |
 |---|---|
 | `describe_schema` | Tables, the `v_transactions` view and the money rules |
-| `query` | One read-only SELECT over everything (users table hidden) |
+| `query` | One read-only SELECT over everything (users table hidden; payroll is readable) |
 | `list_reference` | Companies and divisions with ids |
 | `list_projects` | Projects with budget totals |
 | `project_budget` | Budget vs actual per budget line |
@@ -31,7 +31,9 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | `undo_payment` | Delete a payment recorded by mistake |
 | `update_budget_line` | Change or delete (if unused) a budget line; warns when an approved budget changes |
 | `set_project_status` | Close or reopen a project |
+| `create_party` | Add a client, vendor or employee (with NPWP, bank account) |
 | `update_party` | NPWP, bank account, name, notes of a client / vendor / employee |
+| `payroll_summary`, `record_payroll` | Employee OpEx: monthly payroll totals per division |
 | `pnl_report` | Whole-year P&L in one call: totals, monthly series, per-project rows |
 
 ### Approvals

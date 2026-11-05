@@ -23,9 +23,9 @@ finance data, and nothing that can be computed is stored as a status.
 | 13 | Company OpEx is a separate actuals table | Two ways to record spend | Company spend is a transaction with no project and a `category` |
 
 Payroll is kept as monthly totals per division in `payroll_months`, outside
-`transactions`, because salaries are owner/hr only. The MCP `query` tool cannot
-read it (or `users`). No screens yet for payroll, OpEx budgets, Performance or
-Cash Flow; the data model is ready for them.
+`transactions`. On the web only owner/hr see it; over MCP it is readable
+(`payroll_summary`, `query`) and writable (`record_payroll`). Only `users` is
+hidden from `query`.
 
 ## Tables
 
@@ -43,7 +43,7 @@ transactions  (the raw data, one wide row each)
 payments      (cash that moved; partial payment = several rows)
   transaction_id, direction, amount, date, method, reference
 opex_budgets  (company OpEx: category, fiscal_year, annual_budget, is_fixed)
-payroll_months (period, division, net_salary, bpjs_tk, bpjs_kes, pph21; owner/hr only)
+payroll_months (period, division, net_salary, bpjs_tk, bpjs_kes, pph21)
 approvals     (entity project|transaction, entity_id, status pending|approved|rejected, summary, amount, requested_by, decided_by, notified_at)
 activity_log  (who changed what)
 users

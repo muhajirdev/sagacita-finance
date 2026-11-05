@@ -14,8 +14,17 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
+import { Route as AppBudgetRouteImport } from './routes/_app/budget'
+import { Route as AppCashflowRouteImport } from './routes/_app/cashflow'
+import { Route as AppClientsRouteImport } from './routes/_app/clients'
+import { Route as AppCompopexRouteImport } from './routes/_app/compopex'
+import { Route as AppEmpopexRouteImport } from './routes/_app/empopex'
+import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
+import { Route as AppInvoicingRouteImport } from './routes/_app/invoicing'
 import { Route as AppPayablesRouteImport } from './routes/_app/payables'
+import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
+import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
 import { Route as AppProjectsCodeRouteImport } from './routes/_app/projects.$code'
 
@@ -43,14 +52,59 @@ const AppApprovalsRoute = AppApprovalsRouteImport.update({
   path: '/approvals',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBudgetRoute = AppBudgetRouteImport.update({
+  id: '/budget',
+  path: '/budget',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCashflowRoute = AppCashflowRouteImport.update({
+  id: '/cashflow',
+  path: '/cashflow',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientsRoute = AppClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCompopexRoute = AppCompopexRouteImport.update({
+  id: '/compopex',
+  path: '/compopex',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEmpopexRoute = AppEmpopexRouteImport.update({
+  id: '/empopex',
+  path: '/empopex',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppExpensesRoute = AppExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInvoicingRoute = AppInvoicingRouteImport.update({
+  id: '/invoicing',
+  path: '/invoicing',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPayablesRoute = AppPayablesRouteImport.update({
   id: '/payables',
   path: '/payables',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPerformanceRoute = AppPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTransactionsRoute = AppTransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppUsersRoute = AppUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
@@ -69,8 +123,17 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/approvals': typeof AppApprovalsRoute
+  '/budget': typeof AppBudgetRoute
+  '/cashflow': typeof AppCashflowRoute
+  '/clients': typeof AppClientsRoute
+  '/compopex': typeof AppCompopexRoute
+  '/empopex': typeof AppEmpopexRoute
+  '/expenses': typeof AppExpensesRoute
+  '/invoicing': typeof AppInvoicingRoute
   '/payables': typeof AppPayablesRoute
+  '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
+  '/users': typeof AppUsersRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects/': typeof AppProjectsIndexRoute
 }
@@ -78,8 +141,17 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/approvals': typeof AppApprovalsRoute
+  '/budget': typeof AppBudgetRoute
+  '/cashflow': typeof AppCashflowRoute
+  '/clients': typeof AppClientsRoute
+  '/compopex': typeof AppCompopexRoute
+  '/empopex': typeof AppEmpopexRoute
+  '/expenses': typeof AppExpensesRoute
+  '/invoicing': typeof AppInvoicingRoute
   '/payables': typeof AppPayablesRoute
+  '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
+  '/users': typeof AppUsersRoute
   '/': typeof AppIndexRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects': typeof AppProjectsIndexRoute
@@ -90,8 +162,17 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/_app/approvals': typeof AppApprovalsRoute
+  '/_app/budget': typeof AppBudgetRoute
+  '/_app/cashflow': typeof AppCashflowRoute
+  '/_app/clients': typeof AppClientsRoute
+  '/_app/compopex': typeof AppCompopexRoute
+  '/_app/empopex': typeof AppEmpopexRoute
+  '/_app/expenses': typeof AppExpensesRoute
+  '/_app/invoicing': typeof AppInvoicingRoute
   '/_app/payables': typeof AppPayablesRoute
+  '/_app/performance': typeof AppPerformanceRoute
   '/_app/transactions': typeof AppTransactionsRoute
+  '/_app/users': typeof AppUsersRoute
   '/_app/': typeof AppIndexRoute
   '/_app/projects/$code': typeof AppProjectsCodeRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
@@ -103,8 +184,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/approvals'
+    | '/budget'
+    | '/cashflow'
+    | '/clients'
+    | '/compopex'
+    | '/empopex'
+    | '/expenses'
+    | '/invoicing'
     | '/payables'
+    | '/performance'
     | '/transactions'
+    | '/users'
     | '/projects/$code'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
@@ -112,8 +202,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/approvals'
+    | '/budget'
+    | '/cashflow'
+    | '/clients'
+    | '/compopex'
+    | '/empopex'
+    | '/expenses'
+    | '/invoicing'
     | '/payables'
+    | '/performance'
     | '/transactions'
+    | '/users'
     | '/'
     | '/projects/$code'
     | '/projects'
@@ -123,8 +222,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/_app/approvals'
+    | '/_app/budget'
+    | '/_app/cashflow'
+    | '/_app/clients'
+    | '/_app/compopex'
+    | '/_app/empopex'
+    | '/_app/expenses'
+    | '/_app/invoicing'
     | '/_app/payables'
+    | '/_app/performance'
     | '/_app/transactions'
+    | '/_app/users'
     | '/_app/'
     | '/_app/projects/$code'
     | '/_app/projects/'
@@ -173,6 +281,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppApprovalsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/budget': {
+      id: '/_app/budget'
+      path: '/budget'
+      fullPath: '/budget'
+      preLoaderRoute: typeof AppBudgetRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/cashflow': {
+      id: '/_app/cashflow'
+      path: '/cashflow'
+      fullPath: '/cashflow'
+      preLoaderRoute: typeof AppCashflowRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clients': {
+      id: '/_app/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/compopex': {
+      id: '/_app/compopex'
+      path: '/compopex'
+      fullPath: '/compopex'
+      preLoaderRoute: typeof AppCompopexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/empopex': {
+      id: '/_app/empopex'
+      path: '/empopex'
+      fullPath: '/empopex'
+      preLoaderRoute: typeof AppEmpopexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/expenses': {
+      id: '/_app/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof AppExpensesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/invoicing': {
+      id: '/_app/invoicing'
+      path: '/invoicing'
+      fullPath: '/invoicing'
+      preLoaderRoute: typeof AppInvoicingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/payables': {
       id: '/_app/payables'
       path: '/payables'
@@ -180,11 +337,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPayablesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/performance': {
+      id: '/_app/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof AppPerformanceRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/transactions': {
       id: '/_app/transactions'
       path: '/transactions'
       fullPath: '/transactions'
       preLoaderRoute: typeof AppTransactionsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/users': {
+      id: '/_app/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects/': {
@@ -206,8 +377,17 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
+  AppBudgetRoute: typeof AppBudgetRoute
+  AppCashflowRoute: typeof AppCashflowRoute
+  AppClientsRoute: typeof AppClientsRoute
+  AppCompopexRoute: typeof AppCompopexRoute
+  AppEmpopexRoute: typeof AppEmpopexRoute
+  AppExpensesRoute: typeof AppExpensesRoute
+  AppInvoicingRoute: typeof AppInvoicingRoute
   AppPayablesRoute: typeof AppPayablesRoute
+  AppPerformanceRoute: typeof AppPerformanceRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
+  AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
   AppProjectsCodeRoute: typeof AppProjectsCodeRoute
   AppProjectsIndexRoute: typeof AppProjectsIndexRoute
@@ -215,8 +395,17 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
+  AppBudgetRoute: AppBudgetRoute,
+  AppCashflowRoute: AppCashflowRoute,
+  AppClientsRoute: AppClientsRoute,
+  AppCompopexRoute: AppCompopexRoute,
+  AppEmpopexRoute: AppEmpopexRoute,
+  AppExpensesRoute: AppExpensesRoute,
+  AppInvoicingRoute: AppInvoicingRoute,
   AppPayablesRoute: AppPayablesRoute,
+  AppPerformanceRoute: AppPerformanceRoute,
   AppTransactionsRoute: AppTransactionsRoute,
+  AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
   AppProjectsCodeRoute: AppProjectsCodeRoute,
   AppProjectsIndexRoute: AppProjectsIndexRoute,

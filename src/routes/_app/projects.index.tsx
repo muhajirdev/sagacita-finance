@@ -1,7 +1,8 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { PageHeader, StatusPill, UsageBar } from '#/components/ui'
+import { Modal, PageHeader, StatusPill, TypeBadge, UsageBar, fdate } from '#/components/ui'
+import { updateProjectFn } from '#/server/pages'
 import { rp } from '#/lib/format'
 import { createProjectFn, getProjects, getReference } from '#/server/fns'
 
@@ -18,6 +19,7 @@ function Projects() {
   const router = useRouter()
   const [msg, setMsg] = useState('')
   const [open, setOpen] = useState(false)
+  const [edit, setEdit] = useState<(typeof projects)[number] | null>(null)
   return (
     <>
       <PageHeader
@@ -92,6 +94,7 @@ function Projects() {
               <th className="th num">Spent</th>
               <th className="th">Used</th>
               <th className="th">Status</th>
+              <th className="th" />
             </tr>
           </thead>
           <tbody>
@@ -105,9 +108,11 @@ function Projects() {
                 </td>
                 <td className="td">{p.client}</td>
                 <td className="td">{p.division}</td>
-                <td className="td capitalize">{p.type}</td>
+                <td className="td">
+                  <TypeBadge type={p.type} />
+                </td>
                 <td className="td whitespace-nowrap text-[12px] text-muted">
-                  {p.startDate} – {p.endDate}
+                  {fdate(p.startDate)} – {fdate(p.endDate)}
                 </td>
                 <td className="td num">{rp(p.totals.ceiling)}</td>
                 <td className="td num">{rp(p.totals.actual)}</td>
@@ -117,11 +122,90 @@ function Projects() {
                 <td className="td">
                   <StatusPill status={p.status} />
                 </td>
+                <td className="td">
+                  <button className="btn-ghost" onClick={() => setEdit(p)}>
+                    Edit
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {edit && (
+        <Modal title="Edit project" onClose={() => setEdit(null)}>
+          <form
+            className="grid gap-4 sm:grid-cols-2"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const f = new FormData(e.currentTarget)
+              const s = (k: string) => String(f.get(k) ?? '')
+              try {
+                await updateProjectFn({
+                  data: {
+                    id: edit.id,
+                    code: s('code'),
+                    name: s('name'),
+                    clientName: s('clientName'),
+                    divisionId: Number(s('divisionId')),
+                    type: s('type') as 'retainer' | 'project',
+                    startDate: s('startDate') || null,
+                    endDate: s('endDate') || null,
+                  },
+                })
+                setEdit(null)
+                await router.invalidate()
+              } catch (err) {
+                alert(err instanceof Error ? err.message : String(err))
+              }
+            }}
+          >
+            <label className="field">
+              Client
+              <input className="input" name="clientName" defaultValue={edit.client} required />
+            </label>
+            <label className="field">
+              Project number
+              <input className="input" name="code" defaultValue={edit.code} required />
+            </label>
+            <label className="field sm:col-span-2">
+              Project name
+              <input className="input" name="name" defaultValue={edit.name} required />
+            </label>
+            <label className="field">
+              Division
+              <select className="input" name="divisionId" defaultValue={ref.divisions.find((d) => d.name === edit.division)?.id}>
+                {ref.divisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              Campaign type
+              <select className="input" name="type" defaultValue={edit.type}>
+                <option value="project">Project</option>
+                <option value="retainer">Retainer</option>
+              </select>
+            </label>
+            <label className="field">
+              Start date
+              <input className="input" name="startDate" type="date" defaultValue={edit.startDate ?? ''} />
+            </label>
+            <label className="field">
+              End date
+              <input className="input" name="endDate" type="date" defaultValue={edit.endDate ?? ''} />
+            </label>
+            <div className="flex justify-end gap-2 sm:col-span-2">
+              <button type="button" className="btn-ghost py-2" onClick={() => setEdit(null)}>
+                Cancel
+              </button>
+              <button className="btn">Save</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   )
 }

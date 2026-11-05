@@ -1,10 +1,14 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, redirect } from '@tanstack/react-router'
 
 import { PageHeader, Section, UsageBar } from '#/components/ui'
 import { KIND_LABEL, rp, rpShort } from '#/lib/format'
 import { getDashboard } from '#/server/fns'
 
 export const Route = createFileRoute('/_app/')({
+  beforeLoad: ({ context }) => {
+    if (context.user.role === 'admin') throw redirect({ to: '/budget' })
+    if (context.user.role === 'hr') throw redirect({ to: '/empopex' })
+  },
   loader: () => getDashboard(),
   component: Dashboard,
 })

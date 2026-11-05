@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import {
+  payrollMonths,
   activityLog,
   approvals,
   opexBudgets,
@@ -211,6 +212,35 @@ export async function projectBudget(db: Db, projectId: number) {
     billed: Number(billed?.total ?? 0),
   }
   return { lines: rows, totals }
+}
+
+/** Edit a project's details (not its status: that goes through approval / set_project_status). */
+export async function updateProject(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: {
+    code?: string
+    name?: string
+    clientName?: string
+    divisionId?: number
+    type?: (typeof PROJECT_TYPES)[number]
+    startDate?: string | null
+    endDate?: string | null
+  },
+) {
+  const set: Partial<typeof projects.$inferInsert> = {}
+  if (input.code) set.code = input.code.trim()
+  if (input.name) set.name = input.name.trim()
+  if (input.clientName) set.clientId = (await ensureParty(db, actor, 'client', input.clientName)).id
+  if (input.divisionId) set.divisionId = input.divisionId
+  if (input.type) set.type = input.type
+  if (input.startDate !== undefined) set.startDate = input.startDate || null
+  if (input.endDate !== undefined) set.endDate = input.endDate || null
+  const [row] = await db.update(projects).set(set).where(eq(projects.id, id)).returning()
+  if (!row) throw new FinanceError(`project ${id} not found`)
+  await log(db, actor, 'update', 'projects', id, set)
+  return row
 }
 
 /**
@@ -709,7 +739,7 @@ export async function payablesDue(d1: D1Database, dueBy: string) {
 /**
  * Profit and loss for a year in one call (for dashboards, so they don't fan out into many queries).
  * Cost = DPP of non-void outgoing rows (before tax). Project cost has a project; OpEx has none.
- * Payroll is not included (payroll_months is owner/hr only).
+ * Payroll is reported separately (payroll_summary).
  */
 export async function pnlReport(d1: D1Database, year: number) {
   const y = String(year)
@@ -791,13 +821,80 @@ export async function pnlReport(d1: D1Database, year: number) {
 const FORBIDDEN =
   /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint)\b/i
 
-/** Runs one read-only SELECT. Users (password hashes) and payroll (owner/hr only) cannot be read. */
+/** Runs one read-only SELECT. The users table (password hashes) cannot be read. */
 export async function readonlyQuery(d1: D1Database, query: string, limit = 500) {
   const q = query.trim().replace(/;\s*$/, '')
   if (!/^(select|with)\b/i.test(q)) throw new FinanceError('only SELECT / WITH queries are allowed')
   if (q.includes(';')) throw new FinanceError('one statement only')
   if (FORBIDDEN.test(q)) throw new FinanceError('read-only: that keyword is not allowed')
-  if (/\busers\b|password_hash|payroll_months|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
+  if (/\busers\b|password_hash|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
   const { results } = await d1.prepare(`select * from (${q}) limit ${Math.min(limit, 1000)}`).all()
   return results
+}
+
+// ------------------------------------------------------------------ payroll (Employee OpEx)
+
+/** Monthly payroll totals per division for a year, plus year totals. Cost = net + BPJS TK + BPJS Kes + PPh 21. */
+export async function payrollSummary(db: Db, year: number) {
+  const rows = await db
+    .select({
+      period: payrollMonths.period,
+      division: divisions.name,
+      netSalary: payrollMonths.netSalary,
+      bpjsTk: payrollMonths.bpjsTk,
+      bpjsKes: payrollMonths.bpjsKes,
+      pph21: payrollMonths.pph21,
+      headcount: payrollMonths.headcount,
+    })
+    .from(payrollMonths)
+    .innerJoin(divisions, eq(divisions.id, payrollMonths.divisionId))
+    .where(sql`${payrollMonths.period} like ${year + '-%'}`)
+    .orderBy(asc(payrollMonths.period), asc(divisions.id))
+  const sum = (k: 'netSalary' | 'bpjsTk' | 'bpjsKes' | 'pph21') => rows.reduce((a, r) => a + r[k], 0)
+  return {
+    year,
+    totals: {
+      netSalary: sum('netSalary'),
+      bpjsTk: sum('bpjsTk'),
+      bpjsKes: sum('bpjsKes'),
+      pph21: sum('pph21'),
+      cost: sum('netSalary') + sum('bpjsTk') + sum('bpjsKes') + sum('pph21'),
+    },
+    rows: rows.map((r) => ({ ...r, cost: r.netSalary + r.bpjsTk + r.bpjsKes + r.pph21 })),
+  }
+}
+
+/** Saves one month's payroll totals for one division (replaces an existing entry for that month + division). */
+export async function recordPayroll(
+  db: Db,
+  actor: Actor,
+  input: {
+    period: string
+    divisionId: number
+    netSalary: number
+    bpjsTk?: number
+    bpjsKes?: number
+    pph21?: number
+    headcount?: number
+    notes?: string
+  },
+) {
+  if (!/^\d{4}-\d{2}$/.test(input.period)) throw new FinanceError('period must be YYYY-MM')
+  const values = {
+    period: input.period,
+    divisionId: input.divisionId,
+    netSalary: Math.round(input.netSalary),
+    bpjsTk: Math.round(input.bpjsTk ?? 0),
+    bpjsKes: Math.round(input.bpjsKes ?? 0),
+    pph21: Math.round(input.pph21 ?? 0),
+    headcount: input.headcount ?? null,
+    notes: input.notes ?? null,
+  }
+  const [row] = await db
+    .insert(payrollMonths)
+    .values(values)
+    .onConflictDoUpdate({ target: [payrollMonths.period, payrollMonths.divisionId], set: values })
+    .returning()
+  await log(db, actor, 'upsert', 'payroll_months', row.id, values)
+  return row
 }

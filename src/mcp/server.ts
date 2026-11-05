@@ -6,7 +6,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES } from '#/db/schema'
+import { PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES } from '#/db/schema'
 import { bearerMatches } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -33,6 +33,9 @@ import {
   undoPayment,
   updateBudgetLine,
   updateParty,
+  ensureParty,
+  payrollSummary,
+  recordPayroll,
   updateTransaction,
 } from '#/lib/finance'
 
@@ -58,7 +61,8 @@ Tables:
   approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
   activity_log  who changed what: at, actor, action, entity, entity_id, data (json)
-  (payroll_months and users exist but are not readable here)
+  payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount. Cost = sum of the four.
+  (users is not readable here)
 
 Rules:
   actual spend of a budget line = sum(dpp) of non-void 'out' transactions on it (cost before tax)
@@ -394,6 +398,58 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, id, ...input }) => safe(() => updateParty(db, actor, id, input)),
+  )
+
+  server.registerTool(
+    'create_party',
+    {
+      description:
+        'Add a client, vendor or employee (returns the existing one if the name already exists for that kind). ' +
+        'record_transaction and create_project also create parties by name automatically.',
+      inputSchema: {
+        actor: actorField,
+        kind: z.enum(PARTY_KINDS),
+        name: z.string().min(1),
+        npwp: z.string().optional(),
+        bankAccount: z.string().optional(),
+        notes: z.string().optional(),
+      },
+    },
+    async ({ actor, kind, name, ...extra }) =>
+      safe(async () => {
+        const party = await ensureParty(db, actor, kind, name)
+        return Object.values(extra).some(Boolean) ? updateParty(db, actor, party.id, extra) : party
+      }),
+  )
+
+  server.registerTool(
+    'payroll_summary',
+    {
+      description:
+        'Employee OpEx for a year: monthly payroll totals per division (net salary, BPJS TK/Kes, PPh 21, cost) and year totals. Salaries are sensitive: share only with the owner or HR.',
+      inputSchema: { year: z.number().int().optional() },
+    },
+    async ({ year }) => safe(() => payrollSummary(db, year ?? new Date().getFullYear())),
+  )
+
+  server.registerTool(
+    'record_payroll',
+    {
+      description:
+        "Save one month's payroll totals for one division (from HR's payroll Excel). Saving the same month + division again replaces it. divisionId from list_reference.",
+      inputSchema: {
+        actor: actorField,
+        period: z.string().describe('YYYY-MM'),
+        divisionId: z.number().int(),
+        netSalary: z.number().nonnegative(),
+        bpjsTk: z.number().nonnegative().optional(),
+        bpjsKes: z.number().nonnegative().optional(),
+        pph21: z.number().nonnegative().optional(),
+        headcount: z.number().int().optional(),
+        notes: z.string().optional(),
+      },
+    },
+    async ({ actor, ...input }) => safe(() => recordPayroll(db, actor, input)),
   )
 
   return server
