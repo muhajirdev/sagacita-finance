@@ -13,6 +13,8 @@
       "database_id": "59233b74-936c-4bea-8f6b-b73d4d621734",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  // Uploaded documents (invoice photos, KTP, NPWP). Served only to signed-in users or the MCP token at /files/<id>.
+  "r2_buckets": [{ "binding": "DOCS", "bucket_name": "sagacita-finance-docs" }]
   // Secrets (wrangler secret put): SESSION_SECRET, MCP_TOKEN
 }

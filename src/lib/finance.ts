@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import {
+  documents,
   payrollMonths,
   activityLog,
   approvals,
@@ -897,4 +898,61 @@ export async function recordPayroll(
     .returning()
   await log(db, actor, 'upsert', 'payroll_months', row.id, values)
   return row
+}
+
+// ------------------------------------------------------------------ documents (R2)
+
+const MAX_DOC_BYTES = 15 * 1024 * 1024
+type DocEntity = (typeof documents.$inferSelect)['entity']
+
+/** Stores a file in R2 and records it against a transaction, party or project. Returns the document with its URL. */
+export async function attachDocument(
+  db: Db,
+  bucket: R2Bucket,
+  actor: Actor,
+  appUrl: string,
+  input: { entity: DocEntity; entityId: number; filename: string; contentType: string; bytes: ArrayBuffer; kind?: string | null },
+) {
+  if (input.bytes.byteLength === 0) throw new FinanceError('file is empty')
+  if (input.bytes.byteLength > MAX_DOC_BYTES) throw new FinanceError('file is larger than 15 MB')
+  const table = input.entity === 'transaction' ? transactions : input.entity === 'party' ? parties : projects
+  const exists = await db.select({ id: table.id }).from(table).where(eq(table.id, input.entityId)).get()
+  if (!exists) throw new FinanceError(`${input.entity} ${input.entityId} not found`)
+  const safeName = input.filename.replace(/[^\w.\-]+/g, '_').slice(-80) || 'file'
+  const r2Key = `${input.entity}/${input.entityId}/${Date.now()}-${safeName}`
+  await bucket.put(r2Key, input.bytes, { httpMetadata: { contentType: input.contentType } })
+  const [row] = await db
+    .insert(documents)
+    .values({
+      entity: input.entity,
+      entityId: input.entityId,
+      kind: input.kind ?? null,
+      r2Key,
+      filename: input.filename,
+      contentType: input.contentType,
+      size: input.bytes.byteLength,
+      uploadedBy: actor,
+    })
+    .returning()
+  const url = `${appUrl}/files/${row.id}`
+  if (input.entity === 'transaction')
+    await db
+      .update(transactions)
+      .set({ attachmentUrl: url })
+      .where(and(eq(transactions.id, input.entityId), sql`${transactions.attachmentUrl} is null`))
+  await log(db, actor, 'create', 'documents', row.id, { entity: input.entity, entityId: input.entityId, filename: input.filename })
+  return { ...row, url }
+}
+
+export async function listDocuments(db: Db, appUrl: string, entity: DocEntity, entityId: number) {
+  const rows = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.entity, entity), eq(documents.entityId, entityId)))
+    .orderBy(desc(documents.id))
+  return rows.map((r) => ({ ...r, url: `${appUrl}/files/${r.id}` }))
+}
+
+export async function getDocument(db: Db, id: number) {
+  return db.select().from(documents).where(eq(documents.id, id)).get()
 }

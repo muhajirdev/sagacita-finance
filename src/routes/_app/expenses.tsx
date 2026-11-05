@@ -96,7 +96,38 @@ function Expenses() {
                     {t.party ?? '—'}
                     <div className="text-[12px] text-muted">{KIND_LABEL[t.kind]}</div>
                   </td>
-                  <td className="td max-w-64">{t.description}</td>
+                  <td className="td max-w-64">
+                    {t.description}
+                    <div className="mt-0.5 flex gap-2 text-[12px]">
+                      {t.attachment_url && (
+                        <a
+                          className="text-accent"
+                          href={t.attachment_url.replace(/^https?:\/\/[^/]+/, '')}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View document
+                        </a>
+                      )}
+                      <label className="cursor-pointer text-muted hover:text-ink">
+                        Attach
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*,application/pdf"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            const body = new FormData()
+                            body.set('file', file)
+                            const res = await fetch(`/files/${t.id}?entity=transaction`, { method: 'POST', body })
+                            if (!res.ok) alert(await res.text())
+                            await router.invalidate()
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </td>
                   <td className="td num">
                     {rp(t.total)}
                     {t.paid > 0 && t.outstanding > 0 && <div className="text-[12px] text-muted">paid {rp(t.paid)}</div>}

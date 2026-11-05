@@ -247,6 +247,31 @@ export const approvals = sqliteTable(
   (t) => [index('approvals_status').on(t.status), index('approvals_entity').on(t.entity, t.entityId)],
 )
 
+// ---------------------------------------------------------------- documents
+
+export const DOCUMENT_ENTITIES = ['transaction', 'party', 'project'] as const
+
+/**
+ * Files kept in R2 (binding DOCS): invoice / receipt photos on a transaction, KTP / NPWP on a party,
+ * contracts or POs on a project. Served at /files/<id> to signed-in users and the MCP token.
+ */
+export const documents = sqliteTable(
+  'documents',
+  {
+    id: id(),
+    entity: text('entity', { enum: DOCUMENT_ENTITIES }).notNull(),
+    entityId: integer('entity_id').notNull(),
+    kind: text('kind'), // free label: invoice, receipt, ktp, npwp, contract, po ...
+    r2Key: text('r2_key').notNull().unique(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    uploadedBy: text('uploaded_by').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('documents_entity').on(t.entity, t.entityId)],
+)
+
 // ---------------------------------------------------------------- audit
 
 /** Who changed what, from where. Written by every mutation (web and MCP). */

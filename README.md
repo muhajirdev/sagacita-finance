@@ -34,6 +34,7 @@ TanStack Start on Cloudflare Workers, D1 (SQLite) with Drizzle.
 | `create_party` | Add a client, vendor or employee (with NPWP, bank account) |
 | `update_party` | NPWP, bank account, name, notes of a client / vendor / employee |
 | `payroll_summary`, `record_payroll` | Employee OpEx: monthly payroll totals per division |
+| `attach_document`, `list_documents` | Keep invoice photos, KTP, NPWP, contracts in R2 on a transaction, party or project |
 | `pnl_report` | Whole-year P&L in one call: totals, monthly series, per-project rows |
 
 ### Approvals

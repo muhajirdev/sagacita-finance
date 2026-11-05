@@ -6,7 +6,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import { PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES } from '#/db/schema'
+import { DOCUMENT_ENTITIES, PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES } from '#/db/schema'
 import { bearerMatches } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -34,6 +34,8 @@ import {
   updateBudgetLine,
   updateParty,
   ensureParty,
+  attachDocument,
+  listDocuments,
   payrollSummary,
   recordPayroll,
   updateTransaction,
@@ -60,6 +62,7 @@ Tables:
   opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
   approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
+  documents     files in R2: entity (transaction|party|project), entity_id, kind, filename, content_type, size. URL = <app>/files/<id>
   activity_log  who changed what: at, actor, action, entity, entity_id, data (json)
   payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount. Cost = sum of the four.
   (users is not readable here)
@@ -450,6 +453,61 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => recordPayroll(db, actor, input)),
+  )
+
+  server.registerTool(
+    'attach_document',
+    {
+      description:
+        'Keep a file (invoice / receipt photo, KTP, NPWP, contract, PO) on a transaction, party or project. ' +
+        'Pass fileUrl (a direct https link to the file, e.g. the WhatsApp media URL) or base64 + filename + contentType. Max 15 MB. ' +
+        'The first file on a transaction also becomes its attachment_url.',
+      inputSchema: {
+        actor: actorField,
+        entity: z.enum(DOCUMENT_ENTITIES),
+        entityId: z.number().int(),
+        kind: z.string().optional().describe('invoice, receipt, ktp, npwp, contract, po ...'),
+        fileUrl: z.string().url().optional(),
+        base64: z.string().optional(),
+        filename: z.string().optional(),
+        contentType: z.string().optional(),
+      },
+    },
+    async ({ actor, entity, entityId, kind, fileUrl, base64, filename, contentType }) =>
+      safe(async () => {
+        let bytes: ArrayBuffer
+        let type = contentType
+        let name = filename
+        if (fileUrl) {
+          const res = await fetch(fileUrl)
+          if (!res.ok) throw new FinanceError(`could not download the file (${res.status})`)
+          bytes = await res.arrayBuffer()
+          type ??= res.headers.get('content-type') ?? 'application/octet-stream'
+          name ??= decodeURIComponent(new URL(fileUrl).pathname.split('/').pop() || 'file')
+        } else if (base64) {
+          const bin = atob(base64.replace(/^data:[^,]*,/, ''))
+          const arr = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+          bytes = arr.buffer
+        } else throw new FinanceError('pass fileUrl or base64')
+        return attachDocument(db, env.DOCS, actor, appUrl, {
+          entity,
+          entityId,
+          kind,
+          bytes,
+          filename: name ?? 'file',
+          contentType: type ?? 'application/octet-stream',
+        })
+      }),
+  )
+
+  server.registerTool(
+    'list_documents',
+    {
+      description: 'Files kept on a transaction, party or project, with their URLs.',
+      inputSchema: { entity: z.enum(DOCUMENT_ENTITIES), entityId: z.number().int() },
+    },
+    async ({ entity, entityId }) => safe(() => listDocuments(db, appUrl, entity, entityId)),
   )
 
   return server

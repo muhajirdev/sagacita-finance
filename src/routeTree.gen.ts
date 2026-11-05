@@ -25,6 +25,7 @@ import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as FilesIdRouteImport } from './routes/files.$id'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
 import { Route as AppProjectsCodeRouteImport } from './routes/_app/projects.$code'
 
@@ -107,6 +108,11 @@ const AppUsersRoute = AppUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
+const FilesIdRoute = FilesIdRouteImport.update({
+  id: '/files/$id',
+  path: '/files/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -134,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
+  '/files/$id': typeof FilesIdRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects/': typeof AppProjectsIndexRoute
 }
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
+  '/files/$id': typeof FilesIdRoute
   '/': typeof AppIndexRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects': typeof AppProjectsIndexRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/_app/performance': typeof AppPerformanceRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/users': typeof AppUsersRoute
+  '/files/$id': typeof FilesIdRoute
   '/_app/': typeof AppIndexRoute
   '/_app/projects/$code': typeof AppProjectsCodeRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/transactions'
     | '/users'
+    | '/files/$id'
     | '/projects/$code'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/transactions'
     | '/users'
+    | '/files/$id'
     | '/'
     | '/projects/$code'
     | '/projects'
@@ -233,6 +244,7 @@ export interface FileRouteTypes {
     | '/_app/performance'
     | '/_app/transactions'
     | '/_app/users'
+    | '/files/$id'
     | '/_app/'
     | '/_app/projects/$code'
     | '/_app/projects/'
@@ -242,6 +254,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
+  FilesIdRoute: typeof FilesIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -358,6 +371,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/files/$id': {
+      id: '/files/$id'
+      path: '/files/$id'
+      fullPath: '/files/$id'
+      preLoaderRoute: typeof FilesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/projects/': {
       id: '/_app/projects/'
       path: '/projects'
@@ -417,6 +437,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
+  FilesIdRoute: FilesIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
