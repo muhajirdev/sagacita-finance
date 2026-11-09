@@ -243,6 +243,10 @@ export const approvals = sqliteTable(
     decidedAt: text('decided_at'),
     note: text('note'),
     notifiedAt: text('notified_at'),
+    // spend flow: team submits -> finance PIC acknowledges + proposes pay date -> BOD (owner) releases
+    acknowledgedBy: text('acknowledged_by'),
+    acknowledgedAt: text('acknowledged_at'),
+    payDate: text('pay_date'),
   },
   (t) => [index('approvals_status').on(t.status), index('approvals_entity').on(t.entity, t.entityId)],
 )

@@ -393,7 +393,8 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
     .values({
       kind: input.kind,
       direction,
-      status: overCeiling ? 'draft' : (input.status ?? 'draft'),
+      // all new outgoing spend goes through the approval flow (imports of old data keep their status)
+      status: direction === 'out' && input.source !== 'import' && input.status !== 'void' ? 'draft' : (input.status ?? 'draft'),
       number: input.number || null,
       companyId,
       partyId,
@@ -442,8 +443,10 @@ export async function setTransactionStatus(db: Db, actor: Actor, id: number, sta
       .from(approvals)
       .where(and(eq(approvals.entity, 'transaction'), eq(approvals.entityId, id), eq(approvals.status, 'pending')))
       .get()
-    if (pending?.summary.startsWith(OVER_CEILING))
-      throw new FinanceError(`this expense is over its budget ceiling and needs the owner's approval first (approval #${pending.id})`)
+    if (pending)
+      throw new FinanceError(
+        `this expense is waiting in Approvals (#${pending.id}): finance PIC acknowledges and sets a pay date, then BOD releases it`,
+      )
   }
   const [row] = await db
     .update(transactions)
@@ -643,10 +646,28 @@ export async function submitBudget(db: Db, actor: Actor, project: string | numbe
 }
 
 /** Approve: transaction -> approved, project -> active. Reject: transaction -> void, project stays draft. */
+/** Spend flow step 2+3: finance PIC acknowledges a spend request and proposes when to pay it. */
+export async function acknowledgeSpend(db: Db, actor: Actor, id: number, payDate: string) {
+  const a = await db.select().from(approvals).where(eq(approvals.id, id)).get()
+  if (!a || a.entity !== 'transaction') throw new FinanceError(`spend approval ${id} not found`)
+  if (a.status !== 'pending') throw new FinanceError(`approval ${id} is already ${a.status}`)
+  const now = new Date().toISOString()
+  const [row] = await db
+    .update(approvals)
+    .set({ acknowledgedBy: actor, acknowledgedAt: now, payDate })
+    .where(eq(approvals.id, id))
+    .returning()
+  await db.update(transactions).set({ dueDate: payDate, updatedAt: now }).where(eq(transactions.id, a.entityId))
+  await log(db, actor, 'acknowledge', 'approvals', id, { payDate })
+  return row
+}
+
 export async function decideApproval(db: Db, actor: Actor, id: number, decision: 'approve' | 'reject', note?: string) {
   const a = await db.select().from(approvals).where(eq(approvals.id, id)).get()
   if (!a) throw new FinanceError(`approval ${id} not found`)
   if (a.status !== 'pending') throw new FinanceError(`approval ${id} is already ${a.status} by ${a.decidedBy}`)
+  if (decision === 'approve' && a.entity === 'transaction' && !a.acknowledgedAt)
+    throw new FinanceError(`approval ${id} needs the finance PIC to acknowledge it and set a pay date before BOD can release it`)
   const status = decision === 'approve' ? 'approved' : 'rejected'
   const [row] = await db
     .update(approvals)

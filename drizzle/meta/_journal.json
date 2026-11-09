@@ -36,6 +36,13 @@
       "when": 1793875682775,
       "tag": "0004_premium_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794216123557,
+      "tag": "0005_striped_greymalkin",
+      "breakpoints": true
     }
   ]
 }

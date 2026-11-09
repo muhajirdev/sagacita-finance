@@ -31,6 +31,7 @@ import {
   recordPayment,
   recordTransaction,
   setTransactionStatus,
+  acknowledgeSpend,
   decideApproval,
   listApprovals,
   pnlReport,
@@ -316,11 +317,27 @@ function createServer(env: Env, appUrl: string) {
   )
 
   server.registerTool(
+    'acknowledge_spend',
+    {
+      description:
+        'Finance PIC step of the spend flow: acknowledge a pending spend approval and propose the pay date (also set as the bill due date). ' +
+        'Only call when the finance PIC said so. After this, BOD releases it with decide_approval.',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int().describe('Approval id'),
+        payDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('YYYY-MM-DD'),
+      },
+    },
+    async ({ actor, id, payDate }) => safe(() => acknowledgeSpend(db, actor, id, payDate)),
+  )
+
+  server.registerTool(
     'decide_approval',
     {
       description:
         'Approve or reject a pending approval. Only call this when the approver themselves said so (e.g. the owner replied "approve 12"). ' +
-        'Approving spend makes it payable; rejecting voids it. Approving a budget makes the project active.',
+        'Spend flow: team submits -> finance PIC acknowledge_spend (sets pay date) -> BOD (owner) approves here = release. ' +
+        'Spend cannot be approved before acknowledge_spend. Approving spend makes it payable; rejecting voids it. Approving a budget makes the project active.',
       inputSchema: {
         actor: actorField,
         id: z.number().int(),
