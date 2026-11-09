@@ -354,6 +354,9 @@ export type RecordTransactionInput = {
   createdBy?: number | null
 }
 
+/** Prefix on approval summaries for spend over a budget line's ceiling. Only decideApproval can clear these. */
+export const OVER_CEILING = 'Over ceiling'
+
 export async function recordTransaction(db: Db, actor: Actor, input: RecordTransactionInput) {
   const direction = input.kind === 'client_invoice' ? 'in' : 'out'
   const tax = computeTax({ dpp: input.dpp, withPpn: input.withPpn, pphType: input.pphType, pph: input.pph })
@@ -369,9 +372,16 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
   }
   if (!companyId) throw new FinanceError('companyId is required when there is no project')
 
+  // Spend that would push a budget line over its ceiling always waits for the owner's approval.
+  let overCeiling: string | null = null
   if (input.budgetLineId) {
     const line = await db.select().from(budgetLines).where(eq(budgetLines.id, input.budgetLineId)).get()
     if (!line || line.projectId !== project?.id) throw new FinanceError('budget line does not belong to this project')
+    if (direction === 'out' && input.status !== 'void') {
+      const bl = (await projectBudget(db, project.id)).lines.find((l) => l.id === line.id)
+      if (bl && bl.actual + tax.dpp > bl.ceiling)
+        overCeiling = `${OVER_CEILING} "${bl.name}": Rp ${(bl.actual + tax.dpp).toLocaleString('id-ID')} of Rp ${bl.ceiling.toLocaleString('id-ID')}`
+    }
   }
   if (input.partyName) {
     const kind: PartyKind = direction === 'in' ? 'client' : input.kind === 'vendor_bill' ? 'vendor' : 'employee'
@@ -383,7 +393,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
     .values({
       kind: input.kind,
       direction,
-      status: input.status ?? 'draft',
+      status: overCeiling ? 'draft' : (input.status ?? 'draft'),
       number: input.number || null,
       companyId,
       partyId,
@@ -409,7 +419,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
       entity: 'transaction',
       entityId: row.id,
       amount: row.total,
-      summary: spendSummary(row, input.partyName || null, project?.code ?? null),
+      summary: (overCeiling ? overCeiling + ' | ' : '') + spendSummary(row, input.partyName || null, project?.code ?? null),
     })
   }
 
@@ -420,12 +430,21 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
     if (line && line.actual > line.ceiling)
       warning =
         (warning ? warning + ' ' : '') +
-        `Budget line "${line.name}" is now over its ceiling: spent Rp ${line.actual.toLocaleString('id-ID')} of Rp ${line.ceiling.toLocaleString('id-ID')}.`
+        `Budget line "${line.name}" is over its ceiling (Rp ${line.actual.toLocaleString('id-ID')} of Rp ${line.ceiling.toLocaleString('id-ID')}), so this expense is waiting for the owner's approval.`
   }
   return { transaction: row, warning, approval }
 }
 
 export async function setTransactionStatus(db: Db, actor: Actor, id: number, status: TransactionStatus) {
+  if (status !== 'draft' && status !== 'void') {
+    const pending = await db
+      .select()
+      .from(approvals)
+      .where(and(eq(approvals.entity, 'transaction'), eq(approvals.entityId, id), eq(approvals.status, 'pending')))
+      .get()
+    if (pending?.summary.startsWith(OVER_CEILING))
+      throw new FinanceError(`this expense is over its budget ceiling and needs the owner's approval first (approval #${pending.id})`)
+  }
   const [row] = await db
     .update(transactions)
     .set({ status, updatedAt: new Date().toISOString() })

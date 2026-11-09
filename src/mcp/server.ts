@@ -190,7 +190,7 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Record a client invoice, vendor bill, cash advance or reimbursement. PPN (11%) and PPh are computed from dpp. ' +
-        'Confirm the details with the person before calling. Returns a warning when a budget line goes over its ceiling. ' +
+        'Confirm the details with the person before calling. Spend that would take a budget line over its ceiling is saved as draft and waits for owner approval (decide_approval); it cannot be approved with set_transaction_status. ' +
         'Outgoing spend left as draft opens a pending approval (returned as `approval`); tell the person it is waiting for approval.',
       inputSchema: {
         actor: actorField,

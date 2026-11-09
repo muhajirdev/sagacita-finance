@@ -24,16 +24,20 @@ import {
 import { getMe, logout } from '#/server/fns'
 
 export const Route = createFileRoute('/_app')({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const user = await getMe()
     if (!user) throw redirect({ to: '/login' })
+    // Per-tab access: a page that isn't in your sidebar sends you to your home page (HR never sees finance, finance never sees payroll).
+    const role = user.role as Role
+    const page = NAV.filter((n) => n.to !== '/').find((n) => location.pathname === n.to || location.pathname.startsWith(n.to + '/'))
+    if (page && !(page.roles as readonly Role[]).includes(role)) throw redirect({ to: '/' })
+    if (location.pathname.startsWith('/projects') && !['owner', 'finance', 'admin'].includes(role)) throw redirect({ to: '/' })
     return { user }
   },
   component: Layout,
 })
 
 type Role = 'owner' | 'finance' | 'admin' | 'hr'
-const ALL: Role[] = ['owner', 'finance', 'admin', 'hr']
 
 /** Same pages, sections and role access as the original app, plus Payment run, Approvals and All transactions. */
 const NAV = [
@@ -43,12 +47,12 @@ const NAV = [
   { section: 'Operations', to: '/invoicing', label: 'Invoicing', icon: IconReceipt, roles: ['owner', 'finance'] },
   { section: 'Operations', to: '/expenses', label: 'Expenses', icon: IconWallet, roles: ['owner', 'finance', 'admin'] },
   { section: 'Operations', to: '/payables', label: 'Payment run', icon: IconCalendar, roles: ['owner', 'finance'] },
-  { section: 'Operations', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ALL },
+  { section: 'Operations', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
   { section: 'Reporting', to: '/performance', label: 'Performance', icon: IconChart, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/cashflow', label: 'Cash Flow', icon: IconWave, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/transactions', label: 'All transactions', icon: IconList, roles: ['owner', 'finance'] },
   { section: 'People & Costs', to: '/empopex', label: 'Employee OpEx', icon: IconPeople, roles: ['owner', 'hr'] },
-  { section: 'People & Costs', to: '/compopex', label: 'Company OpEx', icon: IconBuilding, roles: ['owner', 'finance', 'hr'] },
+  { section: 'People & Costs', to: '/compopex', label: 'Company OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
   { section: 'Admin', to: '/clients', label: 'Client List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
   { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
 ] as const

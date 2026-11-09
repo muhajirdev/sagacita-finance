@@ -38,7 +38,7 @@ async function currentUser() {
   return user ?? null
 }
 
-/** Signed-in user. HR only sees payroll / company OpEx, so finance data refuses the hr role unless allowHr. */
+/** Signed-in user. HR only sees payroll (Employee OpEx), so finance data refuses the hr role unless allowHr. */
 async function requireUser(allowHr = false) {
   const user = await currentUser()
   if (!user) throw new Error('Not signed in')
@@ -203,7 +203,7 @@ export const recordTransactionFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data }) => {
-    const user = await requireUser(true)
+    const user = await requireUser()
     return recordTransaction(getDb(), user.email, { ...data, source: 'web', createdBy: user.id })
   })
 
@@ -224,7 +224,7 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
 export const getApprovals = createServerFn()
   .validator(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
   .handler(async ({ data }) => {
-    const user = await requireUser(true)
+    const user = await requireUser()
     return { canDecide: user.role === 'owner', approvals: await listApprovals(getDb(), { status: data.status ?? 'pending', limit: 100 }) }
   })
 
