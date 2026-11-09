@@ -259,7 +259,7 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
 export const getCompanyOpex = createServerFn()
   .validator(yearSchema)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'hr', 'finance')
+    await requireRole('owner', 'finance')
     const year = data.year ?? new Date().getFullYear()
     const db = getDb()
     const budgets = await db.select().from(opexBudgets).where(eq(opexBudgets.fiscalYear, year)).orderBy(asc(opexBudgets.sortOrder))
@@ -293,7 +293,7 @@ export const setOpexBudgetFn = createServerFn({ method: 'POST' })
 // ------------------------------------------------------------ clients
 
 export const getClients = createServerFn().handler(async () => {
-  await requireRole()
+  await requireRole('owner', 'finance', 'admin')
   const db = getDb()
   const counts = await db
     .select({ clientId: projects.clientId, n: sql<number>`count(*)` })
