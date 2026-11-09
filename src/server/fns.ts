@@ -22,6 +22,7 @@ import {
   recordPayment,
   recordTransaction,
   setTransactionStatus,
+  acknowledgeSpend,
   decideApproval,
   listApprovals,
   submitBudget,
@@ -225,7 +226,18 @@ export const getApprovals = createServerFn()
   .validator(z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional() }))
   .handler(async ({ data }) => {
     const user = await requireUser()
-    return { canDecide: user.role === 'owner', approvals: await listApprovals(getDb(), { status: data.status ?? 'pending', limit: 100 }) }
+    return {
+      canDecide: user.role === 'owner',
+      canAcknowledge: user.role === 'finance' || user.role === 'owner',
+      approvals: await listApprovals(getDb(), { status: data.status ?? 'pending', limit: 100 }) }
+  })
+
+export const acknowledgeSpendFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.number().int(), payDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    if (user.role !== 'finance' && user.role !== 'owner') throw new Error('Only the finance PIC can acknowledge spend')
+    return acknowledgeSpend(getDb(), user.email, data.id, data.payDate)
   })
 
 export const decideApprovalFn = createServerFn({ method: 'POST' })

@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 
@@ -142,9 +142,9 @@ function Expenses() {
                   <td className="td">{STAGE_PILL[s]}</td>
                   <td className="td whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                     {s === 'request' && (
-                      <button className="btn-ghost mr-1" onClick={() => act(() => setStatusFn({ data: { id: t.id, status: 'approved' } }))}>
-                        Approve
-                      </button>
+                      <Link to="/approvals" className="btn-ghost mr-1">
+                        In Approvals
+                      </Link>
                     )}
                     {s === 'unpaid' && (
                       <button

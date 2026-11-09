@@ -71,12 +71,15 @@ function Invoicing() {
                 <th className="th num">Total Quotation</th>
                 <th className="th num">Invoiced So Far</th>
                 <th className="th num">Remaining</th>
+                <th className="th">Invoices</th>
                 <th className="th">Status</th>
               </tr>
             </thead>
             <tbody>
               {projects.map((p) => {
                 const remain = p.totals.charge - p.totals.billed
+                const mine = invoices.filter((i) => i.project_id === p.id && i.status !== 'void')
+                const paidN = mine.filter((i) => i.outstanding <= 0).length
                 const status =
                   remain <= 1 && p.totals.charge > 0 ? (
                     <span className="pill-good">Fully invoiced</span>
@@ -96,6 +99,9 @@ function Invoicing() {
                     <td className="td num">{rp(p.totals.charge)}</td>
                     <td className="td num">{rp(p.totals.billed)}</td>
                     <td className="td num">{rp(remain)}</td>
+                    <td className="td whitespace-nowrap text-[13px]">
+                      {mine.length} sent · {paidN} paid
+                    </td>
                     <td className="td">{status}</td>
                   </tr>
                 )
