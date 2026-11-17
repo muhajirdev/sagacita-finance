@@ -17,6 +17,7 @@ import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AppBudgetRouteImport } from './routes/_app/budget'
 import { Route as AppCashflowRouteImport } from './routes/_app/cashflow'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
+import { Route as AppCompaniesRouteImport } from './routes/_app/companies'
 import { Route as AppCompopexRouteImport } from './routes/_app/compopex'
 import { Route as AppEmpopexRouteImport } from './routes/_app/empopex'
 import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
@@ -68,6 +69,11 @@ const AppCashflowRoute = AppCashflowRouteImport.update({
 const AppClientsRoute = AppClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCompaniesRoute = AppCompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCompopexRoute = AppCompopexRouteImport.update({
@@ -144,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/budget': typeof AppBudgetRoute
   '/cashflow': typeof AppCashflowRoute
   '/clients': typeof AppClientsRoute
+  '/companies': typeof AppCompaniesRoute
   '/compopex': typeof AppCompopexRoute
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/budget': typeof AppBudgetRoute
   '/cashflow': typeof AppCashflowRoute
   '/clients': typeof AppClientsRoute
+  '/companies': typeof AppCompaniesRoute
   '/compopex': typeof AppCompopexRoute
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/_app/budget': typeof AppBudgetRoute
   '/_app/cashflow': typeof AppCashflowRoute
   '/_app/clients': typeof AppClientsRoute
+  '/_app/companies': typeof AppCompaniesRoute
   '/_app/compopex': typeof AppCompopexRoute
   '/_app/empopex': typeof AppEmpopexRoute
   '/_app/expenses': typeof AppExpensesRoute
@@ -214,6 +223,7 @@ export interface FileRouteTypes {
     | '/budget'
     | '/cashflow'
     | '/clients'
+    | '/companies'
     | '/compopex'
     | '/empopex'
     | '/expenses'
@@ -235,6 +245,7 @@ export interface FileRouteTypes {
     | '/budget'
     | '/cashflow'
     | '/clients'
+    | '/companies'
     | '/compopex'
     | '/empopex'
     | '/expenses'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/_app/budget'
     | '/_app/cashflow'
     | '/_app/clients'
+    | '/_app/companies'
     | '/_app/compopex'
     | '/_app/empopex'
     | '/_app/expenses'
@@ -337,6 +349,13 @@ declare module '@tanstack/react-router' {
       path: '/clients'
       fullPath: '/clients'
       preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/companies': {
+      id: '/_app/companies'
+      path: '/companies'
+      fullPath: '/companies'
+      preLoaderRoute: typeof AppCompaniesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/compopex': {
@@ -438,6 +457,7 @@ interface AppRouteChildren {
   AppBudgetRoute: typeof AppBudgetRoute
   AppCashflowRoute: typeof AppCashflowRoute
   AppClientsRoute: typeof AppClientsRoute
+  AppCompaniesRoute: typeof AppCompaniesRoute
   AppCompopexRoute: typeof AppCompopexRoute
   AppEmpopexRoute: typeof AppEmpopexRoute
   AppExpensesRoute: typeof AppExpensesRoute
@@ -458,6 +478,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBudgetRoute: AppBudgetRoute,
   AppCashflowRoute: AppCashflowRoute,
   AppClientsRoute: AppClientsRoute,
+  AppCompaniesRoute: AppCompaniesRoute,
   AppCompopexRoute: AppCompopexRoute,
   AppEmpopexRoute: AppEmpopexRoute,
   AppExpensesRoute: AppExpensesRoute,

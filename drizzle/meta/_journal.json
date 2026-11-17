@@ -85,6 +85,13 @@
       "when": 1794904137924,
       "tag": "0011_advance_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794904388027,
+      "tag": "0012_companies",
+      "breakpoints": true
     }
   ]
 }

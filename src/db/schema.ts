@@ -42,7 +42,10 @@ export const users = sqliteTable('users', {
 export const companies = sqliteTable('companies', {
   id: id(),
   name: text('name').notNull().unique(),
+  /** Short name people use, e.g. SRI, BRAB. */
+  code: text('code'),
   npwp: text('npwp'),
+  address: text('address'),
   createdAt: createdAt(),
 })
 
