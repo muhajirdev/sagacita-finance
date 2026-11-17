@@ -7,6 +7,8 @@ import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
 import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setAccountFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
+import { getLpjSubmissions, lpjLinkFn, settleFromLpjFn } from '#/server/lpj'
+import type { LpjItem } from '#/lib/lpj'
 import { Select, ui } from '#/components/dialogs'
 import { FilterBar } from '#/components/filter-bar'
 import { VendorPicker } from '#/components/vendor-picker'
@@ -26,7 +28,10 @@ export const Route = createFileRoute('/_app/expenses')({
   loaderDeps: ({ search }) => pickFilters(search),
   loader: async ({ deps }) => {
     const [rows, projects, ref] = await Promise.all([getExpenses({ data: deps }), getProjects(), getReference()])
-    return { rows, projects, vendors: ref.vendors, accounts: ref.accounts, ref }
+    // LPJs employees submitted through their link, for paid advances not settled yet.
+    const advanceIds = rows.filter((t) => t.kind === 'cash_advance' && t.status === 'approved').map((t) => t.id)
+    const lpj = await getLpjSubmissions({ data: { advanceIds } })
+    return { rows, projects, vendors: ref.vendors, accounts: ref.accounts, ref, lpj }
   },
   component: Expenses,
 })
@@ -47,7 +52,8 @@ const STAGE_PILL = {
 }
 
 function Expenses() {
-  const { rows, projects, vendors, accounts, ref } = Route.useLoaderData()
+  const { rows, projects, vendors, accounts, ref, lpj } = Route.useLoaderData()
+  const [review, setReview] = useState<TransactionRow | null>(null)
   const search = Route.useSearch()
   const { tab = 'all' } = search
   const navigate = Route.useNavigate()
@@ -168,7 +174,7 @@ function Expenses() {
                   </td>
                   <td className="td">{t.requested_by ?? '—'}</td>
                   <td className="td">
-                    {STAGE_PILL[s]}
+                    {lpj[t.id]?.submittedAt && t.status === 'approved' ? <span className="pill-warn">LPJ submitted, waiting review</span> : STAGE_PILL[s]}
                     {t.lpj_due && (
                       <div className={`mt-0.5 text-[12px] ${t.lpj_due < new Date().toISOString().slice(0, 10) ? 'text-bad' : 'text-muted'}`}>
                         LPJ due {t.lpj_due}
@@ -206,7 +212,31 @@ function Expenses() {
                         Pay
                       </button>
                     )}
+                    {s === 'paid' && t.kind === 'cash_advance' && lpj[t.id]?.submittedAt && (
+                      <button className="btn mr-1 px-3 py-1 text-[12px]" onClick={() => setReview(t)}>
+                        Review LPJ
+                      </button>
+                    )}
                     {s === 'paid' && t.kind === 'cash_advance' && (
+                      <button
+                        className="btn-ghost mr-1"
+                        title="A secret link the advance holder opens on their phone to fill the LPJ with receipts. No login."
+                        onClick={() =>
+                          act(async () => {
+                            const link = await lpjLinkFn({ data: { advanceId: t.id } })
+                            try {
+                              await navigator.clipboard.writeText(link.url)
+                              ui.toast('LPJ link copied. Send it to ' + (link.person ?? 'the advance holder'))
+                            } catch {
+                              await ui.prompt('LPJ link', [{ name: 'url', label: 'Copy this link', defaultValue: link.url }], { submitLabel: 'Done' })
+                            }
+                          })
+                        }
+                      >
+                        Copy LPJ link
+                      </button>
+                    )}
+                    {s === 'paid' && t.kind === 'cash_advance' && !lpj[t.id]?.submittedAt && (
                       <button
                         className="btn-ghost mr-1"
                         onClick={async () => {
@@ -271,7 +301,97 @@ function Expenses() {
           }}
         />
       )}
+      {review && lpj[review.id] && (
+        <LpjReview
+          advance={review}
+          sub={lpj[review.id]}
+          onClose={() => setReview(null)}
+          onSettle={(date) =>
+            act(async () => {
+              await settleFromLpjFn({ data: { advanceId: review.id, date } })
+              setReview(null)
+              ui.toast('LPJ settled')
+            })
+          }
+        />
+      )}
     </>
+  )
+}
+
+/** Finance reviews what the employee submitted through the LPJ link, then settles it (one LPJ line per item). */
+function LpjReview({
+  advance,
+  sub,
+  onClose,
+  onSettle,
+}: {
+  advance: TransactionRow
+  sub: { submittedAt: string | null; items: LpjItem[]; spent: number; note: string | null }
+  onClose: () => void
+  onSettle: (date: string) => void
+}) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const diff = sub.spent - advance.total
+  return (
+    <Modal title={`LPJ ${advance.number ?? ''} · ${advance.requested_by ?? advance.party ?? ''}`} onClose={onClose} wide>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted">Submitted {sub.submittedAt?.slice(0, 16).replace('T', ' ')} UTC through the LPJ link.</p>
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="th">Date</th>
+              <th className="th">Item</th>
+              <th className="th">Receipt</th>
+              <th className="th num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sub.items.map((i, n) => (
+              <tr key={n}>
+                <td className="td whitespace-nowrap">{i.date}</td>
+                <td className="td">{i.description}</td>
+                <td className="td">
+                  {i.documentId ? (
+                    <a className="text-accent" href={`/files/${i.documentId}`} target="_blank" rel="noreferrer">
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-bad">None</span>
+                  )}
+                </td>
+                <td className="td num">{rp(i.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {sub.note && <p>Note: {sub.note}</p>}
+        <dl className="space-y-1">
+          <div className="flex justify-between">
+            <dt className="text-muted">Advanced</dt>
+            <dd className="num">{rp(advance.total)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted">Spent</dt>
+            <dd className="num">{rp(sub.spent)}</dd>
+          </div>
+          <div className="flex justify-between font-medium">
+            <dt>{diff > 0 ? 'Still to pay them (becomes a bill)' : diff < 0 ? 'They refund (becomes a refund)' : 'Difference'}</dt>
+            <dd className="num">{rp(Math.abs(diff))}</dd>
+          </div>
+        </dl>
+        <p className="text-muted">Something wrong? Send them the same link again; they can change it until you settle.</p>
+        <div className="flex items-end justify-end gap-2">
+          <label className="text-[12px] text-muted">
+            LPJ date
+            <input className="input mt-1" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <button className="btn" onClick={() => onSettle(date)}>
+            Approve and settle
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

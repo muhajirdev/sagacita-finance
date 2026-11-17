@@ -35,6 +35,8 @@ import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppVendorsRouteImport } from './routes/_app/vendors'
 import { Route as FilesIdRouteImport } from './routes/files.$id'
+import { Route as LpjReceiptTokenRouteImport } from './routes/lpj-receipt.$token'
+import { Route as LpjTokenRouteImport } from './routes/lpj.$token'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
 import { Route as AppProjectsCodeRouteImport } from './routes/_app/projects.$code'
 
@@ -167,6 +169,16 @@ const FilesIdRoute = FilesIdRouteImport.update({
   path: '/files/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LpjReceiptTokenRoute = LpjReceiptTokenRouteImport.update({
+  id: '/lpj-receipt/$token',
+  path: '/lpj-receipt/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LpjTokenRoute = LpjTokenRouteImport.update({
+  id: '/lpj/$token',
+  path: '/lpj/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -204,6 +216,8 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
+  '/lpj/$token': typeof LpjTokenRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects/': typeof AppProjectsIndexRoute
 }
@@ -232,6 +246,8 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
+  '/lpj/$token': typeof LpjTokenRoute
   '/': typeof AppIndexRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects': typeof AppProjectsIndexRoute
@@ -263,6 +279,8 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
+  '/lpj/$token': typeof LpjTokenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/projects/$code': typeof AppProjectsCodeRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
@@ -295,6 +313,8 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/files/$id'
+    | '/lpj-receipt/$token'
+    | '/lpj/$token'
     | '/projects/$code'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
@@ -323,6 +343,8 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/files/$id'
+    | '/lpj-receipt/$token'
+    | '/lpj/$token'
     | '/'
     | '/projects/$code'
     | '/projects'
@@ -353,6 +375,8 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/vendors'
     | '/files/$id'
+    | '/lpj-receipt/$token'
+    | '/lpj/$token'
     | '/_app/'
     | '/_app/projects/$code'
     | '/_app/projects/'
@@ -363,6 +387,8 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
   FilesIdRoute: typeof FilesIdRoute
+  LpjReceiptTokenRoute: typeof LpjReceiptTokenRoute
+  LpjTokenRoute: typeof LpjTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -549,6 +575,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FilesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lpj-receipt/$token': {
+      id: '/lpj-receipt/$token'
+      path: '/lpj-receipt/$token'
+      fullPath: '/lpj-receipt/$token'
+      preLoaderRoute: typeof LpjReceiptTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lpj/$token': {
+      id: '/lpj/$token'
+      path: '/lpj/$token'
+      fullPath: '/lpj/$token'
+      preLoaderRoute: typeof LpjTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/projects/': {
       id: '/_app/projects/'
       path: '/projects'
@@ -627,6 +667,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
   FilesIdRoute: FilesIdRoute,
+  LpjReceiptTokenRoute: LpjReceiptTokenRoute,
+  LpjTokenRoute: LpjTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
