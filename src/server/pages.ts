@@ -62,6 +62,7 @@ export const updateProjectFn = createServerFn({ method: 'POST' })
       type: z.enum(PROJECT_TYPES).optional(),
       startDate: z.string().nullable().optional(),
       endDate: z.string().nullable().optional(),
+      contractValue: z.number().nonnegative().nullable().optional(),
     }),
   )
   .handler(async ({ data: { id, ...input } }) => {

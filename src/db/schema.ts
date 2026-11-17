@@ -109,6 +109,8 @@ export const projects = sqliteTable(
     status: text('status', { enum: PROJECT_STATUSES }).notNull().default('active'),
     startDate: text('start_date'),
     endDate: text('end_date'),
+    /** Contract / PO value the client signed (IDR, before tax). Entered by finance, never derived from invoices. */
+    contractValue: integer('contract_value'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

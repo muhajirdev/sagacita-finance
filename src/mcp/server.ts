@@ -428,6 +428,7 @@ function createServer(env: Env, appUrl: string) {
         type: z.enum(PROJECT_TYPES),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
+        contractValue: z.number().nonnegative().nullable().optional().describe('Contract / PO value the client signed, IDR before tax. Only from the PO or contract; never fill it from invoice totals'),
       },
     },
     async ({ actor, ...input }) => safe(() => createProject(db, actor, input)),
@@ -592,7 +593,7 @@ function createServer(env: Env, appUrl: string) {
     'update_project',
     {
       description:
-        'Edit a project: project number (code), name, client, division (agency), type, start/end dates. Pass only what changes. ' +
+        'Edit a project: project number (code), name, client, division (agency), type, start/end dates, contract / PO value. Pass only what changes. ' +
         'Changing the budget itself is update_budget_line / add_budget_line.',
       inputSchema: {
         actor: actorField,
@@ -605,6 +606,7 @@ function createServer(env: Env, appUrl: string) {
         type: z.enum(PROJECT_TYPES).optional(),
         startDate: z.string().nullable().optional(),
         endDate: z.string().nullable().optional(),
+        contractValue: z.number().nonnegative().nullable().optional().describe('Contract / PO value the client signed, IDR before tax. Only from the PO or contract; never fill it from invoice totals'),
       },
     },
     async ({ actor, project, ...input }) =>

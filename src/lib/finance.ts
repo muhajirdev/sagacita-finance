@@ -331,6 +331,7 @@ export async function createProject(
     type: (typeof PROJECT_TYPES)[number]
     startDate?: string
     endDate?: string
+    contractValue?: number | null
   },
 ) {
   const client = await findClient(db, input)
@@ -346,6 +347,7 @@ export async function createProject(
       status: 'draft',
       startDate: input.startDate || null,
       endDate: input.endDate || null,
+      contractValue: input.contractValue == null ? null : Math.round(input.contractValue),
     })
     .returning()
   await log(db, actor, 'create', 'projects', row.id, row)
@@ -435,6 +437,7 @@ export async function updateProject(
     type?: (typeof PROJECT_TYPES)[number]
     startDate?: string | null
     endDate?: string | null
+    contractValue?: number | null
   },
 ) {
   const set: Partial<typeof projects.$inferInsert> = {}
@@ -445,6 +448,10 @@ export async function updateProject(
   if (input.type) set.type = input.type
   if (input.startDate !== undefined) set.startDate = input.startDate || null
   if (input.endDate !== undefined) set.endDate = input.endDate || null
+  if (input.contractValue !== undefined) {
+    if (input.contractValue != null && !(input.contractValue >= 0)) throw new FinanceError('contract value must be 0 or more')
+    set.contractValue = input.contractValue == null ? null : Math.round(input.contractValue)
+  }
   const [row] = await db.update(projects).set(set).where(eq(projects.id, id)).returning()
   if (!row) throw new FinanceError(`project ${id} not found`)
   await log(db, actor, 'update', 'projects', id, set)
@@ -1408,7 +1415,7 @@ export async function pnlReport(d1: D1Database, year: number) {
     await d1
       .prepare(
         `select p.id, p.code, p.name, p.status, c.name as client, d.name as division,
-           (select coalesce(sum(charge), 0) from budget_lines b where b.project_id = p.id) as contract,
+           coalesce(p.contract_value, (select coalesce(sum(charge), 0) from budget_lines b where b.project_id = p.id)) as contract,
            (select coalesce(sum(max_expense + asf_amount), 0) from budget_lines b where b.project_id = p.id) as budget,
            (select coalesce(sum(dpp), 0) from transactions t where t.project_id = p.id and t.direction = 'out' and t.status != 'void') as cost,
            (select coalesce(sum(dpp), 0) from transactions t where t.project_id = p.id and t.direction = 'in' and t.status != 'void') as billed
