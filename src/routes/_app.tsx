@@ -55,6 +55,7 @@ const NAV = [
   { section: 'People & Costs', to: '/empopex', label: 'Employee OpEx', icon: IconPeople, roles: ['owner', 'hr'] },
   { section: 'People & Costs', to: '/compopex', label: 'Company OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
   { section: 'Admin', to: '/clients', label: 'Client List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Admin', to: '/vendors', label: 'Vendor List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
   { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
   { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory, roles: ['owner'] },
 ] as const

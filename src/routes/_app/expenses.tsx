@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Modal, PageHeader, Tabs } from '#/components/ui'
 import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { getProject, getProjects, recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
+import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
@@ -20,7 +20,7 @@ type Tab = (typeof TABS)[number][0]
 
 export const Route = createFileRoute('/_app/expenses')({
   validateSearch: z.object({ tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional() }),
-  loader: async () => ({ rows: await getExpenses(), projects: await getProjects() }),
+  loader: async () => ({ rows: await getExpenses(), projects: await getProjects(), vendors: (await getReference()).vendors }),
   component: Expenses,
 })
 
@@ -40,7 +40,7 @@ const STAGE_PILL = {
 }
 
 function Expenses() {
-  const { rows, projects } = Route.useLoaderData()
+  const { rows, projects, vendors } = Route.useLoaderData()
   const { tab = 'all' } = Route.useSearch()
   const navigate = Route.useNavigate()
   const router = useRouter()
@@ -207,6 +207,7 @@ function Expenses() {
       {open && (
         <ExpenseForm
           projects={projects}
+          vendors={vendors}
           onClose={() => setOpen(false)}
           onSaved={async () => {
             setOpen(false)
@@ -226,10 +227,12 @@ const CATEGORIES = [
 
 function ExpenseForm({
   projects,
+  vendors,
   onClose,
   onSaved,
 }: {
   projects: { id: number; code: string; client: string }[]
+  vendors: { id: number; name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -295,8 +298,19 @@ function ExpenseForm({
           <Select value={kind} onChange={(v) => setKind(v as typeof kind)} options={CATEGORIES.map(([v, l]) => ({ value: v, label: l }))} />
         </label>
         <label className="field">
-          {kind === 'vendor_bill' ? 'Vendor name' : 'Employee name'}
-          <input className="input" name="partyName" required />
+          {kind === 'vendor_bill' ? 'Vendor' : 'Employee name'}
+          {kind === 'vendor_bill' ? (
+            <>
+              <input className="input" name="partyName" required list="vendor-list" placeholder="Type to search the vendor list" autoComplete="off" />
+              <datalist id="vendor-list">
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.name} />
+                ))}
+              </datalist>
+            </>
+          ) : (
+            <input className="input" name="partyName" required />
+          )}
         </label>
         <label className="field sm:col-span-2">
           Purpose / description

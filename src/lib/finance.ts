@@ -111,6 +111,18 @@ export async function ensureParty(db: Db, actor: Actor, kind: PartyKind, name: s
   return created
 }
 
+/** A vendor from the vendor list, by exact name (case-insensitive). Vendor invoices must use a listed vendor. Never creates one. */
+export async function findVendor(db: Db, name: string) {
+  const clean = name.trim()
+  const found = await db
+    .select()
+    .from(parties)
+    .where(and(eq(parties.kind, 'vendor'), sql`lower(${parties.name}) = lower(${clean})`))
+    .get()
+  if (!found) throw new FinanceError(`vendor "${clean}" is not in the vendor list. Add it to the Vendor List first (create_party, kind vendor).`)
+  return found
+}
+
 /** A client from the client list, by id or exact name (case-insensitive). Never creates one. */
 export async function findClient(db: Db, ref: { clientId?: number | null; clientName?: string | null }) {
   const row = ref.clientId
@@ -386,6 +398,11 @@ export type PartyDetails = {
   address?: string | null
   paymentTermsDays?: number | null
   npwp?: string | null
+  picName?: string | null
+  phone?: string | null
+  email?: string | null
+  bankName?: string | null
+  accountName?: string | null
   bankAccount?: string | null
   notes?: string | null
 }
@@ -394,7 +411,7 @@ export type PartyDetails = {
 export async function updateParty(db: Db, actor: Actor, id: number, input: PartyDetails) {
   const set: Partial<typeof parties.$inferInsert> = {}
   if (input.name) set.name = input.name.trim()
-  for (const k of ['legalEntity', 'address', 'npwp', 'bankAccount', 'notes'] as const)
+  for (const k of ['legalEntity', 'address', 'npwp', 'picName', 'phone', 'email', 'bankName', 'accountName', 'bankAccount', 'notes'] as const)
     if (input[k] !== undefined) set[k] = input[k]?.trim() || null
   if (input.code !== undefined) {
     try {
@@ -473,7 +490,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
   }
   if (input.partyName) {
     const kind: PartyKind = direction === 'in' ? 'client' : input.kind === 'vendor_bill' ? 'vendor' : 'employee'
-    partyId = (await ensureParty(db, actor, kind, input.partyName)).id
+    partyId = (input.kind === 'vendor_bill' ? await findVendor(db, input.partyName) : await ensureParty(db, actor, kind, input.partyName)).id
   }
   // Client invoices default their due date to the client's standard TOP.
   if (direction === 'in' && !dueDate && partyId) {
@@ -646,7 +663,7 @@ export async function updateTransaction(
   let partyName: string | null = null
   if (input.partyName) {
     const kind: PartyKind = tx.direction === 'in' ? 'client' : tx.kind === 'vendor_bill' ? 'vendor' : 'employee'
-    const party = await ensureParty(db, actor, kind, input.partyName)
+    const party = tx.kind === 'vendor_bill' ? await findVendor(db, input.partyName) : await ensureParty(db, actor, kind, input.partyName)
     set.partyId = party.id
     partyName = party.name
   }

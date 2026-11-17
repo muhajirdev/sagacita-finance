@@ -26,6 +26,7 @@ import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as AppVendorsRouteImport } from './routes/_app/vendors'
 import { Route as FilesIdRouteImport } from './routes/files.$id'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
 import { Route as AppProjectsCodeRouteImport } from './routes/_app/projects.$code'
@@ -114,6 +115,11 @@ const AppUsersRoute = AppUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppVendorsRoute = AppVendorsRouteImport.update({
+  id: '/vendors',
+  path: '/vendors',
+  getParentRoute: () => AppRoute,
+} as any)
 const FilesIdRoute = FilesIdRouteImport.update({
   id: '/files/$id',
   path: '/files/$id',
@@ -147,6 +153,7 @@ export interface FileRoutesByFullPath {
   '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
+  '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
   '/projects/$code': typeof AppProjectsCodeRoute
   '/projects/': typeof AppProjectsIndexRoute
@@ -167,6 +174,7 @@ export interface FileRoutesByTo {
   '/performance': typeof AppPerformanceRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
+  '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
   '/': typeof AppIndexRoute
   '/projects/$code': typeof AppProjectsCodeRoute
@@ -190,6 +198,7 @@ export interface FileRoutesById {
   '/_app/performance': typeof AppPerformanceRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/users': typeof AppUsersRoute
+  '/_app/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
   '/_app/': typeof AppIndexRoute
   '/_app/projects/$code': typeof AppProjectsCodeRoute
@@ -214,6 +223,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/transactions'
     | '/users'
+    | '/vendors'
     | '/files/$id'
     | '/projects/$code'
     | '/projects/'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/transactions'
     | '/users'
+    | '/vendors'
     | '/files/$id'
     | '/'
     | '/projects/$code'
@@ -256,6 +267,7 @@ export interface FileRouteTypes {
     | '/_app/performance'
     | '/_app/transactions'
     | '/_app/users'
+    | '/_app/vendors'
     | '/files/$id'
     | '/_app/'
     | '/_app/projects/$code'
@@ -390,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/vendors': {
+      id: '/_app/vendors'
+      path: '/vendors'
+      fullPath: '/vendors'
+      preLoaderRoute: typeof AppVendorsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/files/$id': {
       id: '/files/$id'
       path: '/files/$id'
@@ -428,6 +447,7 @@ interface AppRouteChildren {
   AppPerformanceRoute: typeof AppPerformanceRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppUsersRoute: typeof AppUsersRoute
+  AppVendorsRoute: typeof AppVendorsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppProjectsCodeRoute: typeof AppProjectsCodeRoute
   AppProjectsIndexRoute: typeof AppProjectsIndexRoute
@@ -447,6 +467,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPerformanceRoute: AppPerformanceRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppUsersRoute: AppUsersRoute,
+  AppVendorsRoute: AppVendorsRoute,
   AppIndexRoute: AppIndexRoute,
   AppProjectsCodeRoute: AppProjectsCodeRoute,
   AppProjectsIndexRoute: AppProjectsIndexRoute,

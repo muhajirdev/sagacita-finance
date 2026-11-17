@@ -73,6 +73,13 @@ export const parties = sqliteTable(
     /** Clients: standard term of payment from the contract, in days. Default due date for their invoices. */
     paymentTermsDays: integer('payment_terms_days'),
     npwp: text('npwp'),
+    /** Vendors: contact person, phone and email. */
+    picName: text('pic_name'),
+    phone: text('phone'),
+    email: text('email'),
+    /** Bank details: bank name, account holder name, and the account number (bank_account). */
+    bankName: text('bank_name'),
+    accountName: text('account_name'),
     bankAccount: text('bank_account'),
     notes: text('notes'),
     createdAt: createdAt(),

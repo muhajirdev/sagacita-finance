@@ -71,6 +71,13 @@
       "when": 1794902967753,
       "tag": "0009_payroll_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794903826464,
+      "tag": "0010_vendor_list",
+      "breakpoints": true
     }
   ]
 }
