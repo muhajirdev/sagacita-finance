@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { PPH_TYPES, PROJECT_TYPES, TAX_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
+import { filterSearch, toListFilter } from '#/lib/filters'
 import {
   deleteBudgetLine,
   ensureParty,
@@ -86,17 +87,21 @@ export const updateBudgetLineFn = createServerFn({ method: 'POST' })
 
 // ------------------------------------------------------------ invoicing / expenses
 
-export const getInvoicing = createServerFn().handler(async () => {
-  await requireRole('owner', 'finance')
-  const db = getDb()
-  const [invoices, ps] = await Promise.all([listTransactions(env.DB, { direction: 'in', limit: 1000 }), listProjects(db)])
-  return { invoices, projects: ps }
-})
+export const getInvoicing = createServerFn()
+  .validator(filterSearch)
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const f = toListFilter(data)
+    const [invoices, ps] = await Promise.all([listTransactions(env.DB, { ...f, direction: 'in', limit: 2000 }), listProjects(getDb(), f)])
+    return { invoices, projects: ps }
+  })
 
-export const getExpenses = createServerFn().handler(async () => {
-  await requireRole('owner', 'finance', 'admin')
-  return listTransactions(env.DB, { direction: 'out', limit: 1000 })
-})
+export const getExpenses = createServerFn()
+  .validator(filterSearch)
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance', 'admin')
+    return listTransactions(env.DB, { ...toListFilter(data), direction: 'out', limit: 2000 })
+  })
 
 export const updateTransactionFn = createServerFn({ method: 'POST' })
   .validator(
@@ -123,12 +128,12 @@ export const updateTransactionFn = createServerFn({ method: 'POST' })
 // ------------------------------------------------------------ performance
 
 export const getPerformance = createServerFn()
-  .validator(yearSchema)
+  .validator(filterSearch)
   .handler(async ({ data }) => {
     const user = await requireRole('owner', 'finance')
-    const year = data.year ?? new Date().getFullYear()
+    const f = toListFilter(data)
     const db = getDb()
-    const ps = await listProjects(db)
+    const ps = await listProjects(db, f)
     const rows = ps.map((p) => {
       const billing = Math.max(p.totals.charge, p.totals.billed)
       return {
@@ -150,12 +155,12 @@ export const getPerformance = createServerFn()
       const pay = await db
         .select({ v: sql<number>`coalesce(sum(net_salary + bpjs_tk + bpjs_kes + pph21), 0)` })
         .from(payrollMonths)
-        .where(like(payrollMonths.period, `${year}-%`))
+        .where(sql`${payrollMonths.period} >= ${f.from?.slice(0, 7) ?? '0000'} and ${payrollMonths.period} <= ${f.to?.slice(0, 7) ?? '9999'}`)
         .get()
       const opex = await env.DB.prepare(
-        `select coalesce(sum(dpp), 0) v from transactions where direction = 'out' and status != 'void' and project_id is null and substr(issue_date, 1, 4) = ?`,
+        `select coalesce(sum(dpp), 0) v from transactions where direction = 'out' and status != 'void' and project_id is null and issue_date >= ? and issue_date <= ?`,
       )
-        .bind(String(year))
+        .bind(f.from ?? '0000', f.to ?? '9999')
         .first<{ v: number }>()
       owner = {
         projectExpenses: rows.reduce((a, r) => a + r.actualExp, 0),
@@ -163,7 +168,7 @@ export const getPerformance = createServerFn()
         companyOpex: Number(opex?.v ?? 0),
       }
     }
-    return { year, rows, owner }
+    return { rows, owner }
   })
 
 // ------------------------------------------------------------ cash flow

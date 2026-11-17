@@ -8,6 +8,8 @@ import { KIND_LABEL, rp } from '#/lib/format'
 import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setAccountFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
 const TABS = [
   ['all', 'All'],
@@ -19,10 +21,11 @@ const TABS = [
 type Tab = (typeof TABS)[number][0]
 
 export const Route = createFileRoute('/_app/expenses')({
-  validateSearch: z.object({ tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional() }),
-  loader: async () => {
-    const ref = await getReference()
-    return { rows: await getExpenses(), projects: await getProjects(), vendors: ref.vendors, accounts: ref.accounts }
+  validateSearch: filterSearch.extend({ tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional() }),
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [rows, projects, ref] = await Promise.all([getExpenses({ data: deps }), getProjects(), getReference()])
+    return { rows, projects, vendors: ref.vendors, accounts: ref.accounts, ref }
   },
   component: Expenses,
 })
@@ -43,8 +46,9 @@ const STAGE_PILL = {
 }
 
 function Expenses() {
-  const { rows, projects, vendors, accounts } = Route.useLoaderData()
-  const { tab = 'all' } = Route.useSearch()
+  const { rows, projects, vendors, accounts, ref } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const { tab = 'all' } = search
   const navigate = Route.useNavigate()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -69,8 +73,9 @@ function Expenses() {
           </button>
         }
       />
+      <FilterBar value={pickFilters(search)} lists={ref} onChange={(f) => navigate({ search: (prev) => ({ ...prev, ...f }) })} />
       <div className="mb-4">
-        <Tabs<Tab> value={tab} options={TABS} onChange={(t) => navigate({ search: { tab: t } })} />
+        <Tabs<Tab> value={tab} options={TABS} onChange={(t) => navigate({ search: (prev) => ({ ...prev, tab: t }) })} />
       </div>
       <div className="card overflow-x-auto">
         <table className="table">

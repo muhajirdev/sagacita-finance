@@ -6,18 +6,24 @@ import { updateProjectFn } from '#/server/pages'
 import { rp } from '#/lib/format'
 import { createProjectFn, getProjects, getReference, nextProjectCodeFn } from '#/server/fns'
 import { Select, ui } from '#/components/dialogs'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
 export const Route = createFileRoute('/_app/projects/')({
-  loader: async () => ({
-    projects: await getProjects(),
-    ref: await getReference(),
-  }),
+  validateSearch: filterSearch,
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [projects, ref] = await Promise.all([getProjects({ data: deps }), getReference()])
+    return { projects, ref }
+  },
   component: Projects,
 })
 
 function Projects() {
   const { projects, ref } = Route.useLoaderData()
   const router = useRouter()
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const [msg, setMsg] = useState('')
   const [open, setOpen] = useState(false)
   const [edit, setEdit] = useState<(typeof projects)[number] | null>(null)
@@ -35,6 +41,7 @@ function Projects() {
           </button>
         }
       />
+      <FilterBar value={pickFilters(search)} lists={ref} project={false} status onChange={(f) => navigate({ search: (prev) => ({ ...prev, ...f }) })} />
       {open && (
         <form
           className="card mb-8 grid gap-3 p-5 md:grid-cols-4"

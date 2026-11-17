@@ -2,14 +2,21 @@ import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-ro
 
 import { PageHeader, Section, UsageBar } from '#/components/ui'
 import { KIND_LABEL, rp, rpShort } from '#/lib/format'
-import { getDashboard } from '#/server/fns'
+import { getDashboard, getReference } from '#/server/fns'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
 export const Route = createFileRoute('/_app/')({
   beforeLoad: ({ context }) => {
     if (context.user.role === 'admin') throw redirect({ to: '/budget' })
     if (context.user.role === 'hr') throw redirect({ to: '/empopex' })
   },
-  loader: () => getDashboard(),
+  validateSearch: filterSearch,
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [d, ref] = await Promise.all([getDashboard({ data: deps }), getReference()])
+    return { ...d, ref }
+  },
   component: Dashboard,
 })
 
@@ -39,6 +46,8 @@ const fmtDate = (d: string | null) =>
 function Dashboard() {
   const d = Route.useLoaderData()
   const navigate = useNavigate()
+  const search = Route.useSearch()
+  const go = Route.useNavigate()
   const active = d.projects.filter((p) => p.status !== 'closed')
   const watch = [...d.projects].sort((a, b) => b.totals.usedPct - a.totals.usedPct).slice(0, 6)
   const over = d.projects.filter((p) => p.totals.usedPct > 100).length
@@ -53,8 +62,9 @@ function Dashboard() {
       <PageHeader
         eyebrow={today}
         title="Overview"
-        sub={`${active.length} active projects across all divisions. B = billion (miliar), M = million (juta).`}
+        sub={`${active.length} active projects in this view. B = billion (miliar), M = million (juta).`}
       />
+      <FilterBar value={pickFilters(search)} lists={d.ref} onChange={(f) => go({ search: (prev) => ({ ...prev, ...f }) })} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Billed" value={d.billing} sub="client invoices, before PPN" />

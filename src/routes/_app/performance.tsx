@@ -3,15 +3,28 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { PageHeader, Stat, pct } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { getPerformance } from '#/server/pages'
+import { getReference } from '#/server/fns'
+import { rangeOf } from '#/lib/filters'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
 export const Route = createFileRoute('/_app/performance')({
-  loader: () => getPerformance({ data: {} }),
+  validateSearch: filterSearch,
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [d, ref] = await Promise.all([getPerformance({ data: deps }), getReference()])
+    return { ...d, ref }
+  },
   component: Performance,
 })
 
 function Performance() {
-  const { year, rows, owner } = Route.useLoaderData()
+  const { rows, owner, ref } = Route.useLoaderData()
   const navigate = useNavigate()
+  const search = Route.useSearch()
+  const go = Route.useNavigate()
+  const range = rangeOf(search)
+  const period = range.from || range.to ? `${range.from ?? '…'} to ${range.to ?? '…'}` : 'All years'
   const sum = (k: 'billing' | 'allocExp' | 'actualExp') => rows.reduce((a, r) => a + r[k], 0)
   const billing = sum('billing')
   const estExp = sum('allocExp')
@@ -19,6 +32,7 @@ function Performance() {
   return (
     <>
       <PageHeader title="Performance" sub="Billing is the contract value or the amount invoiced, whichever is higher, before VAT." />
+      <FilterBar value={pickFilters(search)} lists={ref} onChange={(f) => go({ search: (prev) => ({ ...prev, ...f }) })} />
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Total Billing (net)" value={rpShort(billing)} sub="contracted / invoiced, pre-VAT" />
         <Stat label="Estimated Expenses" value={rpShort(estExp)} sub="sum of all SOW max expense + ASF" />
@@ -75,7 +89,7 @@ function Performance() {
       {owner && (
         <>
           <h2 className="mb-3 mt-10 text-[15px] font-semibold">
-            Net Profit Summary <span className="text-[12px] font-normal text-muted">· Owner view · {year}</span>
+            Net Profit Summary <span className="text-[12px] font-normal text-muted">· Owner view · {period}</span>
           </h2>
           <div className="card max-w-xl divide-y divide-line text-[14px]">
             <Line label="Total Billing" value={billing} />

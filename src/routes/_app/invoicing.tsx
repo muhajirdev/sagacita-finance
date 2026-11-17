@@ -8,6 +8,9 @@ import { rp } from '#/lib/format'
 import { recordPaymentFn, recordTransactionFn } from '#/server/fns'
 import { getInvoicing, updateTransactionFn } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
+import { getReference } from '#/server/fns'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
 const TABS = [
   ['pending', 'Pending'],
@@ -17,8 +20,12 @@ const TABS = [
 type Tab = (typeof TABS)[number][0]
 
 export const Route = createFileRoute('/_app/invoicing')({
-  validateSearch: z.object({ tab: z.enum(['pending', 'paid', 'uninvoiced']).optional() }),
-  loader: () => getInvoicing(),
+  validateSearch: filterSearch.extend({ tab: z.enum(['pending', 'paid', 'uninvoiced']).optional() }),
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [d, ref] = await Promise.all([getInvoicing({ data: deps }), getReference()])
+    return { ...d, ref }
+  },
   component: Invoicing,
 })
 
@@ -37,8 +44,9 @@ function InvoiceStatus({ t }: { t: TransactionRow }) {
 }
 
 function Invoicing() {
-  const { invoices, projects } = Route.useLoaderData()
-  const { tab = 'pending' } = Route.useSearch()
+  const { invoices, projects, ref } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const { tab = 'pending' } = search
   const navigate = Route.useNavigate()
   const router = useRouter()
   const [form, setForm] = useState<TransactionRow | 'new' | null>(null)
@@ -59,7 +67,8 @@ function Invoicing() {
         }
       />
       <div className="mb-4">
-        <Tabs<Tab> value={tab} options={TABS} onChange={(t) => navigate({ search: { tab: t } })} />
+        <FilterBar value={pickFilters(search)} lists={ref} onChange={(f) => navigate({ search: (prev) => ({ ...prev, ...f }) })} />
+        <Tabs<Tab> value={tab} options={TABS} onChange={(t) => navigate({ search: (prev) => ({ ...prev, tab: t }) })} />
       </div>
 
       {tab === 'uninvoiced' ? (
@@ -205,7 +214,7 @@ function Invoicing() {
       {form && (
         <InvoiceForm
           invoice={form === 'new' ? null : form}
-          projects={projects}
+          projects={ref.projects}
           onClose={() => setForm(null)}
           onSaved={async () => {
             setForm(null)
