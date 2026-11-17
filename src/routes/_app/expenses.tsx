@@ -9,6 +9,7 @@ import { getProject, getProjects, getReference, recordPaymentFn, recordTransacti
 import { getExpenses } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 import { FilterBar } from '#/components/filter-bar'
+import { VendorPicker } from '#/components/vendor-picker'
 import { filterSearch, pickFilters } from '#/lib/filters'
 
 const TABS = [
@@ -289,7 +290,7 @@ function ExpenseForm({
 }: {
   projects: { id: number; code: string; client: string }[]
   accounts: { id: number; code: string; name: string; group: string }[]
-  vendors: { id: number; name: string }[]
+  vendors: { id: number; name: string; bankName?: string | null; bankAccount?: string | null }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -358,14 +359,7 @@ function ExpenseForm({
         <label className="field">
           {kind === 'vendor_bill' ? 'Vendor' : 'Employee name'}
           {kind === 'vendor_bill' ? (
-            <>
-              <input className="input" name="partyName" required list="vendor-list" placeholder="Type to search the vendor list" autoComplete="off" />
-              <datalist id="vendor-list">
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.name} />
-                ))}
-              </datalist>
-            </>
+            <VendorPicker vendors={vendors} name="partyName" />
           ) : (
             <input className="input" name="partyName" required />
           )}

@@ -3,7 +3,8 @@ import { useState } from 'react'
 
 import { PageHeader } from '#/components/ui'
 import { addVendorFn, getVendors, updateVendorFn } from '#/server/pages'
-import { ui, type PromptField } from '#/components/dialogs'
+import { ui } from '#/components/dialogs'
+import { vendorData as toData, vendorFields as fields } from '#/lib/vendor-form'
 
 export const Route = createFileRoute('/_app/vendors')({
   loader: () => getVendors(),
@@ -12,50 +13,12 @@ export const Route = createFileRoute('/_app/vendors')({
 
 type Vendor = ReturnType<typeof Route.useLoaderData>[number]
 
-function fields(v?: Vendor): PromptField[] {
-  const f = (name: keyof Vendor & string, label: string, hint?: string): PromptField => ({
-    name,
-    label,
-    defaultValue: (v?.[name] as string | null | undefined) ?? '',
-    hint,
-    required: false,
-  })
-  return [
-    { ...f('name', 'Vendor name', 'The name picked on vendor invoices'), required: true },
-    f('legalEntity', 'PT name', 'As on their invoice, e.g. PT Pamarta Pratama Pradipta'),
-    f('npwp', 'NPWP'),
-    f('address', 'Address'),
-    f('picName', 'PIC name'),
-    f('phone', 'Phone'),
-    f('email', 'Email'),
-    f('bankName', 'Bank name', 'e.g. BCA, Mandiri'),
-    f('accountName', 'Account holder name'),
-    f('bankAccount', 'Account number'),
-  ]
-}
-
-function toData(v: Record<string, string>) {
-  const t = (k: string) => v[k]?.trim() || null
-  return {
-    name: v.name.trim(),
-    legalEntity: t('legalEntity'),
-    npwp: t('npwp'),
-    address: t('address'),
-    picName: t('picName'),
-    phone: t('phone'),
-    email: t('email'),
-    bankName: t('bankName'),
-    accountName: t('accountName'),
-    bankAccount: t('bankAccount'),
-  }
-}
-
 function Vendors() {
   const vendors = Route.useLoaderData()
   const router = useRouter()
   const [q, setQ] = useState('')
   const shown = vendors.filter((v) =>
-    [v.name, v.legalEntity, v.picName, v.accountName].some((s) => s?.toLowerCase().includes(q.trim().toLowerCase())),
+    [v.name, v.legalEntity, v.picName, v.accountName, v.bankAccount, v.npwp].some((s) => s?.toLowerCase().includes(q.trim().toLowerCase())),
   )
   return (
     <>
@@ -85,6 +48,7 @@ function Vendors() {
               <th className="th">Vendor</th>
               <th className="th">PT name</th>
               <th className="th">NPWP</th>
+              <th className="th">Address</th>
               <th className="th">PIC</th>
               <th className="th">Bank</th>
               <th className="th num">Bills</th>
@@ -97,6 +61,7 @@ function Vendors() {
                 <td className="td font-medium">{v.name}</td>
                 <td className="td text-ink-2">{v.legalEntity ?? '—'}</td>
                 <td className="td text-ink-2">{v.npwp ?? '—'}</td>
+                <td className="td max-w-56 text-ink-2">{v.address ?? '—'}</td>
                 <td className="td text-ink-2">
                   {v.picName || v.phone || v.email ? (
                     <>

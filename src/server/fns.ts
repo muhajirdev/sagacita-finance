@@ -162,7 +162,7 @@ export const getReference = createServerFn().handler(async () => {
     companies: await listCompanies(db),
     categories: await listOpexCategories(db),
     clients: (await listParties(db, 'client')).map((c) => ({ id: c.id, name: c.name, code: c.code })),
-    vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name })),
+    vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name, bankName: v.bankName, bankAccount: v.bankAccount })),
     accounts: (await listAccounts(db)).filter((a) => a.group !== 'balance'),
     projects: (
       await env.DB.prepare(`select p.id, p.code, p.name, c.name as client from projects p join parties c on c.id = p.client_id order by p.code`).all<{
