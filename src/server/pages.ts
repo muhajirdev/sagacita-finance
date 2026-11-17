@@ -11,6 +11,8 @@ import { getDb } from '#/lib/db'
 import {
   deleteBudgetLine,
   ensureParty,
+  suggestClientCode,
+  updateParty,
   listActivity,
   listDivisions,
   log,
@@ -45,7 +47,7 @@ export const updateProjectFn = createServerFn({ method: 'POST' })
       id: z.number().int(),
       code: z.string().optional(),
       name: z.string().optional(),
-      clientName: z.string().optional(),
+      clientId: z.number().int().optional(),
       divisionId: z.number().int().optional(),
       type: z.enum(PROJECT_TYPES).optional(),
       startDate: z.string().nullable().optional(),
@@ -301,11 +303,31 @@ export const getClients = createServerFn().handler(async () => {
   return (await listParties(db, 'client')).map((c) => ({ ...c, projects: n.get(c.id) ?? 0 }))
 })
 
+const clientFields = z.object({
+  name: z.string().min(1),
+  legalEntity: z.string().nullable().optional(),
+  code: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  paymentTermsDays: z.number().int().nonnegative().nullable().optional(),
+  npwp: z.string().nullable().optional(),
+})
+
+/** Add a client to the client list (or fill in the details of an existing one with that name). */
 export const addClientFn = createServerFn({ method: 'POST' })
-  .validator(z.object({ name: z.string().min(1) }))
-  .handler(async ({ data }) => {
+  .validator(clientFields)
+  .handler(async ({ data: { name, ...details } }) => {
     const user = await requireRole('owner', 'finance', 'admin')
-    return ensureParty(getDb(), user.email, 'client', data.name)
+    const db = getDb()
+    const party = await ensureParty(db, user.email, 'client', name)
+    if (!details.code && !party.code) details.code = suggestClientCode(party.name)
+    return updateParty(db, user.email, party.id, details)
+  })
+
+export const updateClientFn = createServerFn({ method: 'POST' })
+  .validator(clientFields.extend({ id: z.number().int() }))
+  .handler(async ({ data: { id, ...details } }) => {
+    const user = await requireRole('owner', 'finance', 'admin')
+    return updateParty(getDb(), user.email, id, details)
   })
 
 // ------------------------------------------------------------ users (owner)

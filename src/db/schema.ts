@@ -64,7 +64,14 @@ export const parties = sqliteTable(
   {
     id: id(),
     kind: text('kind', { enum: PARTY_KINDS }).notNull(),
-    name: text('name').notNull(),
+    name: text('name').notNull(), // for clients: the brand name people use (e.g. "Aletra")
+    /** Clients: the PT on the invoice / tax documents (e.g. "PT Aletra Mobil Nusantara"). */
+    legalEntity: text('legal_entity'),
+    /** Clients: brand initials used in project codes (e.g. "AMN" in 25AMN1117). */
+    code: text('code'),
+    address: text('address'),
+    /** Clients: standard term of payment from the contract, in days. Default due date for their invoices. */
+    paymentTermsDays: integer('payment_terms_days'),
     npwp: text('npwp'),
     bankAccount: text('bank_account'),
     notes: text('notes'),

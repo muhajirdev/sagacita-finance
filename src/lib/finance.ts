@@ -27,7 +27,10 @@ import {
 } from '#/db/schema'
 import { hashPassword } from '#/lib/auth'
 import { auditSource, type Db } from '#/lib/db'
+import { cleanClientCode, suggestClientCode } from '#/lib/client-code'
 import { computeTax, type PphType } from '#/lib/tax'
+
+export { cleanClientCode, suggestClientCode }
 
 export type Actor = string
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number]
@@ -37,6 +40,9 @@ export type PartyKind = (typeof PARTY_KINDS)[number]
 export class FinanceError extends Error {}
 
 const today = () => new Date().toISOString().slice(0, 10)
+/** Today's date in Jakarta (WIB), for codes people read. */
+const todayWib = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10)
+const addDays = (date: string, days: number) => new Date(Date.parse(date + 'T00:00:00Z') + days * 86400_000).toISOString().slice(0, 10)
 
 /** Writes one audit row. Source (web / mcp / import) and import batch come from the Db handle. */
 export async function log(db: Db, actor: Actor, action: string, entity: string, entityId: number, data?: unknown) {
@@ -105,6 +111,43 @@ export async function ensureParty(db: Db, actor: Actor, kind: PartyKind, name: s
   return created
 }
 
+/** A client from the client list, by id or exact name (case-insensitive). Never creates one. */
+export async function findClient(db: Db, ref: { clientId?: number | null; clientName?: string | null }) {
+  const row = ref.clientId
+    ? await db.select().from(parties).where(and(eq(parties.id, ref.clientId), eq(parties.kind, 'client'))).get()
+    : ref.clientName?.trim()
+      ? await db
+          .select()
+          .from(parties)
+          .where(and(eq(parties.kind, 'client'), sql`lower(${parties.name}) = lower(${ref.clientName.trim()})`))
+          .get()
+      : undefined
+  if (!row) throw new FinanceError(`client ${ref.clientId ?? ref.clientName ?? ''} is not in the client list. Add it there first.`)
+  return row
+}
+
+/**
+ * Next project code: 2-digit year + client initials + 2-digit month + 2-digit day, no separator
+ * (Sagacita on 17 Nov 2026 -> 26SGC1117). A second project for the same client on the same day gets B, then C, ...
+ */
+export async function nextProjectCode(db: Db, clientId: number, date = todayWib()) {
+  const client = await findClient(db, { clientId })
+  const initials = client.code || suggestClientCode(client.name)
+  const [y, m, d] = date.split('-')
+  const base = `${y.slice(2)}${initials}${m}${d}`
+  const taken = new Set(
+    (await db.select({ code: projects.code }).from(projects).where(sql`upper(${projects.code}) like ${base + '%'}`)).map((r) =>
+      r.code.toUpperCase(),
+    ),
+  )
+  if (!taken.has(base)) return base
+  for (let i = 1; i < 26; i++) {
+    const c = base + String.fromCharCode(65 + i)
+    if (!taken.has(c)) return c
+  }
+  throw new FinanceError('too many projects for this client today')
+}
+
 /** A project by numeric id or by its code (e.g. "HND-2026-01"). */
 export async function findProject(db: Db, ref: string | number) {
   const asNumber = typeof ref === 'number' ? ref : /^\d+$/.test(ref) ? Number(ref) : null
@@ -130,6 +173,7 @@ export async function listProjects(db: Db) {
       startDate: projects.startDate,
       endDate: projects.endDate,
       client: parties.name,
+      clientId: projects.clientId,
       division: divisions.name,
     })
     .from(projects)
@@ -144,20 +188,23 @@ export async function createProject(
   db: Db,
   actor: Actor,
   input: {
-    code: string
+    /** Omit to generate one (see nextProjectCode). */
+    code?: string | null
     name: string
-    clientName: string
+    clientId?: number | null
+    clientName?: string | null
     divisionId: number
     type: (typeof PROJECT_TYPES)[number]
     startDate?: string
     endDate?: string
   },
 ) {
-  const client = await ensureParty(db, actor, 'client', input.clientName)
+  const client = await findClient(db, input)
+  const code = input.code?.trim() || (await nextProjectCode(db, client.id))
   const [row] = await db
     .insert(projects)
     .values({
-      code: input.code.trim(),
+      code,
       name: input.name.trim(),
       clientId: client.id,
       divisionId: input.divisionId,
@@ -248,6 +295,7 @@ export async function updateProject(
   input: {
     code?: string
     name?: string
+    clientId?: number
     clientName?: string
     divisionId?: number
     type?: (typeof PROJECT_TYPES)[number]
@@ -258,7 +306,7 @@ export async function updateProject(
   const set: Partial<typeof projects.$inferInsert> = {}
   if (input.code) set.code = input.code.trim()
   if (input.name) set.name = input.name.trim()
-  if (input.clientName) set.clientId = (await ensureParty(db, actor, 'client', input.clientName)).id
+  if (input.clientId || input.clientName) set.clientId = (await findClient(db, input)).id
   if (input.divisionId) set.divisionId = input.divisionId
   if (input.type) set.type = input.type
   if (input.startDate !== undefined) set.startDate = input.startDate || null
@@ -331,16 +379,32 @@ export async function setProjectStatus(db: Db, actor: Actor, project: string | n
   return row
 }
 
-/** Update a client / vendor / employee: name, NPWP, bank account, notes. */
-export async function updateParty(
-  db: Db,
-  actor: Actor,
-  id: number,
-  input: { name?: string; npwp?: string | null; bankAccount?: string | null; notes?: string | null },
-) {
+export type PartyDetails = {
+  name?: string
+  legalEntity?: string | null
+  code?: string | null
+  address?: string | null
+  paymentTermsDays?: number | null
+  npwp?: string | null
+  bankAccount?: string | null
+  notes?: string | null
+}
+
+/** Update a client / vendor / employee: brand name, PT entity, code, address, TOP, NPWP, bank account, notes. */
+export async function updateParty(db: Db, actor: Actor, id: number, input: PartyDetails) {
   const set: Partial<typeof parties.$inferInsert> = {}
   if (input.name) set.name = input.name.trim()
-  for (const k of ['npwp', 'bankAccount', 'notes'] as const) if (input[k] !== undefined) set[k] = input[k] || null
+  for (const k of ['legalEntity', 'address', 'npwp', 'bankAccount', 'notes'] as const)
+    if (input[k] !== undefined) set[k] = input[k]?.trim() || null
+  if (input.code !== undefined) {
+    try {
+      set.code = cleanClientCode(input.code)
+    } catch (e) {
+      throw new FinanceError((e as Error).message)
+    }
+  }
+  if (input.paymentTermsDays !== undefined)
+    set.paymentTermsDays = input.paymentTermsDays == null || Number.isNaN(input.paymentTermsDays) ? null : Math.max(0, Math.round(input.paymentTermsDays))
   if (!Object.keys(set).length) throw new FinanceError('nothing to change')
   const [row] = await db.update(parties).set(set).where(eq(parties.id, id)).returning()
   if (!row) throw new FinanceError(`party ${id} not found`)
@@ -393,6 +457,8 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
     if (direction === 'in') partyId = project.clientId
   }
   if (!companyId) throw new FinanceError('companyId is required when there is no project')
+  const issueDate = input.issueDate || today()
+  let dueDate = input.dueDate || null
 
   // Spend that would push a budget line over its ceiling always waits for the owner's approval.
   let overCeiling: string | null = null
@@ -408,6 +474,11 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
   if (input.partyName) {
     const kind: PartyKind = direction === 'in' ? 'client' : input.kind === 'vendor_bill' ? 'vendor' : 'employee'
     partyId = (await ensureParty(db, actor, kind, input.partyName)).id
+  }
+  // Client invoices default their due date to the client's standard TOP.
+  if (direction === 'in' && !dueDate && partyId) {
+    const top = (await db.select({ d: parties.paymentTermsDays }).from(parties).where(eq(parties.id, partyId)).get())?.d
+    if (top != null) dueDate = addDays(issueDate, top)
   }
 
   const [row] = await db
@@ -425,8 +496,8 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
       divisionId: project ? null : (input.divisionId ?? null),
       category: input.category || null,
       description: input.description || null,
-      issueDate: input.issueDate || today(),
-      dueDate: input.dueDate || null,
+      issueDate,
+      dueDate,
       ...tax,
       requestedBy: input.requestedBy || null,
       attachmentUrl: input.attachmentUrl || null,

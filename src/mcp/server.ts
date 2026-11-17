@@ -42,6 +42,8 @@ import {
   updateBudgetLine,
   updateParty,
   ensureParty,
+  suggestClientCode,
+  listParties,
   attachDocument,
   listDocuments,
   payrollSummary,
@@ -76,7 +78,7 @@ Tables:
   payments      cash that moved: transaction_id, direction, amount, date, method, reference, note. Partial payment = several rows.
   projects      id, code (project number), name, client_id -> parties, division_id -> divisions, type (retainer|project), status, start_date, end_date
   budget_lines  SOW items: project_id, name, charge (client price), max_expense, asf_amount. ceiling = max_expense + asf_amount
-  parties       clients, vendors, employees: kind, name, npwp, bank_account
+  parties       clients, vendors, employees: kind, name (brand for clients), legal_entity (PT), code (initials in project codes), address, payment_terms_days (TOP), npwp, bank_account
   divisions     agencies (Sagacita PR, SagaDigital, Arra Comms) -> company_id
   companies     PTs (tax reporting is per company)
   opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
@@ -144,13 +146,20 @@ function createServer(env: Env, appUrl: string) {
     'list_reference',
     {
       description:
-        "Companies (PTs), divisions and this year's company OpEx categories, with ids. Needed by create_project and company spend.",
+        "Companies (PTs), divisions, the client list and this year's company OpEx categories, with ids. Needed by create_project and company spend.",
       inputSchema: {},
     },
     async () =>
       safe(async () => ({
         companies: await listCompanies(db),
         divisions: await listDivisions(db),
+        clients: (await listParties(db, 'client')).map((c) => ({
+          id: c.id,
+          name: c.name,
+          code: c.code,
+          legalEntity: c.legalEntity,
+          paymentTermsDays: c.paymentTermsDays,
+        })),
         opexCategories: await listOpexCategories(db),
       })),
   )
@@ -254,13 +263,15 @@ function createServer(env: Env, appUrl: string) {
     'create_project',
     {
       description:
-        'Create a project (starts as draft). The client is created if new. Get divisionId from list_reference. ' +
-        'Then add budget lines and call submit_budget so the owner can approve it.',
+        'Create a project (starts as draft). The client must already be in the client list (list_reference; add it with create_party first). ' +
+        'Leave code empty to generate it: 2-digit year + client code + month + day, no separator (e.g. 26SGC1117). ' +
+        'Get divisionId from list_reference. Then add budget lines and call submit_budget so the owner can approve it.',
       inputSchema: {
         actor: actorField,
-        code: z.string().min(1),
+        code: z.string().optional().describe('Omit to auto-generate'),
         name: z.string().min(1),
-        clientName: z.string().min(1),
+        clientId: z.number().int().optional().describe('From list_reference clients'),
+        clientName: z.string().optional().describe('Exact client list name, if no clientId'),
         divisionId: z.number().int(),
         type: z.enum(PROJECT_TYPES),
         startDate: z.string().optional(),
@@ -436,7 +447,8 @@ function createServer(env: Env, appUrl: string) {
         project: z.string().describe('Project code or id'),
         code: z.string().optional(),
         name: z.string().optional(),
-        clientName: z.string().optional().describe('Client name; created if new'),
+        clientId: z.number().int().optional().describe('From list_reference clients'),
+        clientName: z.string().optional().describe('Exact client list name, if no clientId'),
         divisionId: z.number().int().optional().describe('From list_reference'),
         type: z.enum(PROJECT_TYPES).optional(),
         startDate: z.string().nullable().optional(),
@@ -523,11 +535,17 @@ function createServer(env: Env, appUrl: string) {
   server.registerTool(
     'update_party',
     {
-      description: 'Update a client, vendor or employee: name, NPWP, bank account, notes. Find the id with query (parties table).',
+      description:
+        'Update a client, vendor or employee: name (brand name for clients), PT entity, client code (letters used in project codes), ' +
+        'address, standard TOP in days (default invoice due date), NPWP, bank account, notes. Find the id with list_reference or query (parties table).',
       inputSchema: {
         actor: actorField,
         id: z.number().int(),
         name: z.string().optional(),
+        legalEntity: z.string().nullable().optional(),
+        code: z.string().nullable().optional(),
+        address: z.string().nullable().optional(),
+        paymentTermsDays: z.number().int().nonnegative().nullable().optional(),
         npwp: z.string().nullable().optional(),
         bankAccount: z.string().nullable().optional(),
         notes: z.string().nullable().optional(),
@@ -541,11 +559,16 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Add a client, vendor or employee (returns the existing one if the name already exists for that kind). ' +
-        'record_transaction and create_project also create parties by name automatically.',
+        'record_transaction also creates vendors/employees by name automatically; projects need the client in the list first. ' +
+        'For a client, fill in brand name, PT entity, code, NPWP, address and TOP when known.',
       inputSchema: {
         actor: actorField,
         kind: z.enum(PARTY_KINDS),
         name: z.string().min(1),
+        legalEntity: z.string().optional(),
+        code: z.string().optional(),
+        address: z.string().optional(),
+        paymentTermsDays: z.number().int().nonnegative().optional(),
         npwp: z.string().optional(),
         bankAccount: z.string().optional(),
         notes: z.string().optional(),
@@ -554,7 +577,8 @@ function createServer(env: Env, appUrl: string) {
     async ({ actor, kind, name, ...extra }) =>
       safe(async () => {
         const party = await ensureParty(db, actor, kind, name)
-        return Object.values(extra).some(Boolean) ? updateParty(db, actor, party.id, extra) : party
+        if (kind === 'client' && !extra.code && !party.code) extra.code = suggestClientCode(party.name)
+        return Object.values(extra).some((v) => v != null && v !== '') ? updateParty(db, actor, party.id, extra) : party
       }),
   )
 
