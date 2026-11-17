@@ -5,7 +5,7 @@ import { env } from 'cloudflare:workers'
 import { asc, eq, like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, users } from '#/db/schema'
+import { PPH_TYPES, PROJECT_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -387,6 +387,49 @@ export const addClientFn = createServerFn({ method: 'POST' })
 
 export const updateClientFn = createServerFn({ method: 'POST' })
   .validator(clientFields.extend({ id: z.number().int() }))
+  .handler(async ({ data: { id, ...details } }) => {
+    const user = await requireRole('owner', 'finance', 'admin')
+    return updateParty(getDb(), user.email, id, details)
+  })
+
+// ------------------------------------------------------------ vendors
+
+export const getVendors = createServerFn().handler(async () => {
+  await requireRole('owner', 'finance', 'admin')
+  const db = getDb()
+  const counts = await db
+    .select({ partyId: transactions.partyId, n: sql<number>`count(*)` })
+    .from(transactions)
+    .where(eq(transactions.kind, 'vendor_bill'))
+    .groupBy(transactions.partyId)
+  const n = new Map(counts.map((c) => [c.partyId, Number(c.n)]))
+  return (await listParties(db, 'vendor')).map((v) => ({ ...v, bills: n.get(v.id) ?? 0 }))
+})
+
+const vendorFields = z.object({
+  name: z.string().min(1),
+  legalEntity: z.string().nullable().optional(),
+  npwp: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  picName: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  bankName: z.string().nullable().optional(),
+  accountName: z.string().nullable().optional(),
+  bankAccount: z.string().nullable().optional(),
+})
+
+export const addVendorFn = createServerFn({ method: 'POST' })
+  .validator(vendorFields)
+  .handler(async ({ data: { name, ...details } }) => {
+    const user = await requireRole('owner', 'finance', 'admin')
+    const db = getDb()
+    const party = await ensureParty(db, user.email, 'vendor', name)
+    return Object.values(details).some((v) => v) ? updateParty(db, user.email, party.id, details) : party
+  })
+
+export const updateVendorFn = createServerFn({ method: 'POST' })
+  .validator(vendorFields.extend({ id: z.number().int() }))
   .handler(async ({ data: { id, ...details } }) => {
     const user = await requireRole('owner', 'finance', 'admin')
     return updateParty(getDb(), user.email, id, details)

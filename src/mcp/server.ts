@@ -209,7 +209,7 @@ function createServer(env: Env, appUrl: string) {
         budgetLineId: z.number().int().optional().describe('From project_budget. Needed for project spend.'),
         companyId: z.number().int().optional(),
         divisionId: z.number().int().optional().describe('For company spend: the division it belongs to, if any'),
-        partyName: z.string().optional().describe('Vendor or employee name (created if new). Client comes from the project.'),
+        partyName: z.string().optional().describe('Vendor name from the vendor list (vendor_bill), or employee name (created if new). Client comes from the project.'),
         category: z.string().optional().describe('For company spend: an opex category from list_reference, e.g. "Office Rental"'),
         description: z.string().optional(),
         number: z.string().optional().describe('Invoice / bill number on the paper'),
@@ -537,7 +537,7 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Update a client, vendor or employee: name (brand name for clients), PT entity, client code (letters used in project codes), ' +
-        'address, standard TOP in days (default invoice due date), NPWP, bank account, notes. Find the id with list_reference or query (parties table).',
+        'address, standard TOP in days (default invoice due date), NPWP, vendor PIC / phone / email, bank name, account holder, account number, notes. Find the id with list_reference or query (parties table).',
       inputSchema: {
         actor: actorField,
         id: z.number().int(),
@@ -547,7 +547,12 @@ function createServer(env: Env, appUrl: string) {
         address: z.string().nullable().optional(),
         paymentTermsDays: z.number().int().nonnegative().nullable().optional(),
         npwp: z.string().nullable().optional(),
-        bankAccount: z.string().nullable().optional(),
+        picName: z.string().nullable().optional().describe('Vendors: contact person'),
+        phone: z.string().nullable().optional(),
+        email: z.string().nullable().optional(),
+        bankName: z.string().nullable().optional(),
+        accountName: z.string().nullable().optional().describe('Bank account holder name'),
+        bankAccount: z.string().nullable().optional().describe('Account number'),
         notes: z.string().nullable().optional(),
       },
     },
@@ -559,7 +564,7 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Add a client, vendor or employee (returns the existing one if the name already exists for that kind). ' +
-        'record_transaction also creates vendors/employees by name automatically; projects need the client in the list first. ' +
+        'Vendor invoices (vendor_bill) need the vendor in the vendor list first; record_transaction still creates employees by name. Projects need the client in the list first. For a vendor, fill in PT name (legalEntity), NPWP, address, PIC, phone, email, bank name, account holder and account number when known. ' +
         'For a client, fill in brand name, PT entity, code, NPWP, address and TOP when known.',
       inputSchema: {
         actor: actorField,
@@ -570,7 +575,12 @@ function createServer(env: Env, appUrl: string) {
         address: z.string().optional(),
         paymentTermsDays: z.number().int().nonnegative().optional(),
         npwp: z.string().optional(),
-        bankAccount: z.string().optional(),
+        picName: z.string().nullable().optional().describe('Vendors: contact person'),
+        phone: z.string().nullable().optional(),
+        email: z.string().nullable().optional(),
+        bankName: z.string().nullable().optional(),
+        accountName: z.string().nullable().optional().describe('Bank account holder name'),
+        bankAccount: z.string().nullable().optional().describe('Account number'),
         notes: z.string().optional(),
       },
     },

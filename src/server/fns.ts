@@ -120,6 +120,7 @@ export const getReference = createServerFn().handler(async () => {
     companies: await listCompanies(db),
     categories: await listOpexCategories(db),
     clients: (await listParties(db, 'client')).map((c) => ({ id: c.id, name: c.name, code: c.code })),
+    vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name })),
   }
 })
 
