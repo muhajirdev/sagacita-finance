@@ -4,10 +4,10 @@
  * finance then settles the advance as usual (settleAdvance), using the submitted items as the lines.
  * The link stops working once the advance is settled.
  */
-import { eq, inArray, sql } from 'drizzle-orm'
+import { asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { lpjLinks, transactions } from '#/db/schema'
+import { accounts, lpjLinks, transactions } from '#/db/schema'
 import type { Db } from '#/lib/db'
 import { FinanceError, log, settleAdvance, type Actor, type TransactionRow } from '#/lib/finance'
 
@@ -16,6 +16,7 @@ export const lpjItemSchema = z.object({
   description: z.string().trim().min(1, 'describe each item').max(300),
   amount: z.number().int().min(1, 'amount must be more than 0'),
   documentId: z.number().int().nullable().optional(),
+  accountId: z.number().int().nullable().optional(),
 })
 export type LpjItem = z.infer<typeof lpjItemSchema>
 
@@ -88,6 +89,9 @@ export async function lpjByToken(db: Db, token: string) {
     items: parseItems(link.items),
     note: link.note,
     submittedAt: link.submittedAt,
+    accounts: (await db.select({ id: accounts.id, code: accounts.code, name: accounts.name, group: accounts.group }).from(accounts).orderBy(asc(accounts.sortOrder))).filter(
+      (a) => a.group === 'cost_of_service' || a.group === 'operating_expense',
+    ),
   }
 }
 
@@ -132,7 +136,7 @@ export async function settleFromLpj(db: Db, actor: Actor, input: { advanceId: nu
   if (!adv) throw new FinanceError(`cash advance ${input.advanceId} not found`)
   return settleAdvance(db, actor, {
     advanceId: input.advanceId,
-    lines: items.map((i, n) => ({ amount: i.amount, description: `${i.date} ${i.description}`, accountId: input.accountIds?.[n] ?? null })),
+    lines: items.map((i, n) => ({ amount: i.amount, description: `${i.date} ${i.description}`, accountId: input.accountIds?.[n] ?? i.accountId ?? null })),
     date: input.date,
     note: link.note,
     createdBy: input.createdBy,
