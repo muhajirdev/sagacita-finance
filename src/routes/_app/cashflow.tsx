@@ -2,29 +2,39 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 
-import { MONTHS, PageHeader, Stat } from '#/components/ui'
+import { PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { getCashflow } from '#/server/pages'
-import { Select } from '#/components/dialogs'
+import { FilterBar } from '#/components/filter-bar'
+import { MONTH_NAMES, filterSearch, pickFilters, rangeLabel } from '#/lib/filters'
+import { getReference } from '#/server/fns'
 
 export const Route = createFileRoute('/_app/cashflow')({
-  validateSearch: z.object({ year: z.coerce.number().int().optional() }),
-  loaderDeps: ({ search }) => ({ year: search.year }),
-  loader: ({ deps }) => getCashflow({ data: { year: deps.year } }),
+  validateSearch: filterSearch,
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [d, ref] = await Promise.all([getCashflow({ data: deps }), getReference()])
+    return { ...d, ref }
+  },
   component: Cashflow,
 })
 
 function Cashflow() {
   const d = Route.useLoaderData()
   const navigate = useNavigate()
+  const search = Route.useSearch()
+  const go = Route.useNavigate()
+  const label = rangeLabel(search)
+  const monthLabel = (k: string) => `${MONTH_NAMES[Number(k.slice(5)) - 1]}${d.months.length > 12 || k.slice(0, 4) !== d.months[0]?.slice(0, 4) ? ' ' + k.slice(2, 4) : ''}`
   const [hover, setHover] = useState<number | null>(null)
   const peak = Math.max(1, ...d.inM, ...d.outM)
   return (
     <>
       <PageHeader title="Cash Flow" sub="Cash that actually moved (payments), and client money still expected." />
+      <FilterBar value={pickFilters(search)} lists={d.ref} onChange={(f) => go({ search: (prev) => ({ ...prev, ...f }) })} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Stat label="Total Collected" value={rpShort(d.collected)} sub="payments received" tone="good" />
-        <Stat label="Total Expenses Paid Out" value={rpShort(d.paidOut)} sub="paid to vendors and staff" />
+        <Stat label="Total Collected" value={rpShort(d.collected)} sub={`payments received · ${label}`} tone="good" />
+        <Stat label="Total Expenses Paid Out" value={rpShort(d.paidOut)} sub={`paid to vendors and staff · ${label}`} />
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat
@@ -46,11 +56,7 @@ function Cashflow() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h2 className="text-[15px] font-semibold">Monthly cash flow</h2>
-            <Select
-              value={String(d.year)}
-              onChange={(v) => navigate({ to: '/cashflow', search: { year: Number(v) } })}
-              options={d.years.map((y) => ({ value: String(y), label: String(y) }))}
-            />
+            <span className="text-[13px] text-muted">{label}</span>
           </div>
           <div className="flex gap-4 text-[12px] text-ink-2">
             <span className="flex items-center gap-1.5">
@@ -62,12 +68,13 @@ function Cashflow() {
           </div>
         </div>
         <div className="relative flex h-56 items-end gap-1 sm:gap-2" onMouseLeave={() => setHover(null)}>
-          {MONTHS.map((m, i) => {
+          {d.months.map((k, i) => {
+            const m = monthLabel(k)
             const net = d.inM[i] - d.outM[i]
             const active = hover === i
             return (
               <div
-                key={m}
+                key={k}
                 className={`relative flex h-full flex-1 cursor-default flex-col items-center gap-1.5 rounded ${active ? 'bg-ink-2/5' : ''}`}
                 onMouseEnter={() => setHover(i)}
                 onClick={() => setHover(active ? null : i)}
@@ -86,11 +93,11 @@ function Cashflow() {
                 {active && (
                   <div
                     className={`pointer-events-none absolute top-0 z-10 w-48 rounded-lg border border-line bg-surface p-3 text-[12px] shadow-lg ${
-                      i < 6 ? 'left-full ml-1' : 'right-full mr-1'
+                      i < d.months.length / 2 ? 'left-full ml-1' : 'right-full mr-1'
                     }`}
                   >
                     <div className="mb-1.5 font-semibold">
-                      {m} {d.year}
+                      {MONTH_NAMES[Number(k.slice(5)) - 1]} {k.slice(0, 4)}
                     </div>
                     <div className="flex justify-between gap-2">
                       <span className="text-ink-2">Cash in</span>
@@ -112,7 +119,7 @@ function Cashflow() {
         </div>
       </div>
 
-      <h2 className="mb-3 mt-10 text-[15px] font-semibold">Cash position by project</h2>
+      <h2 className="mb-3 mt-10 text-[15px] font-semibold">Cash position by project · {label}</h2>
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>

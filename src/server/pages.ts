@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { PPH_TYPES, PROJECT_TYPES, TAX_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
-import { filterSearch, toListFilter } from '#/lib/filters'
+import { filterSearch, rangeOf, toListFilter } from '#/lib/filters'
 import {
   deleteBudgetLine,
   ensureParty,
@@ -175,70 +175,93 @@ export const getPerformance = createServerFn()
 // ------------------------------------------------------------ cash flow
 
 export const getCashflow = createServerFn()
-  .validator(yearSchema)
+  .validator(filterSearch)
   .handler(async ({ data }) => {
     await requireRole('owner', 'finance')
     const d1 = env.DB
-    const yearRows = await d1
-      .prepare(`select distinct substr(date, 1, 4) y from payments where date is not null order by y`)
-      .all<{ y: string }>()
-    const years = yearRows.results.map((r) => Number(r.y)).filter((y) => y > 2000)
-    const year = data.year ?? new Date().getFullYear()
-    if (!years.includes(year)) years.push(year)
-    years.sort()
-    const totals = await d1
-      .prepare(`select direction, coalesce(sum(amount), 0) v from payments group by direction`)
-      .all<{ direction: 'in' | 'out'; v: number }>()
-    const monthly = await d1
-      .prepare(
-        `select cast(substr(date, 6, 2) as integer) m, direction, coalesce(sum(amount), 0) v
-         from payments where substr(date, 1, 4) = ? group by m, direction`,
-      )
-      .bind(String(year))
-      .all<{ m: number; direction: 'in' | 'out'; v: number }>()
+    const f = toListFilter(data)
+    // Payments joined to their transaction, so division / client / project filters apply.
+    const scope: string[] = []
+    const args: unknown[] = []
+    if (f.divisionId) (scope.push('t.division_id = ?'), args.push(f.divisionId))
+    if (f.clientId) (scope.push('t.client_id = ?'), args.push(f.clientId))
+    if (f.projectCode) (scope.push('t.project_code = ?'), args.push(f.projectCode))
+    const scopeSql = scope.map((w) => ' and ' + w).join('')
+    const dateSql = (f.from ? ' and y.date >= ?' : '') + (f.to ? ' and y.date <= ?' : '')
+    const dateArgs = [f.from, f.to].filter(Boolean)
+    const monthly = (
+      await d1
+        .prepare(
+          `select substr(y.date, 1, 7) m, y.direction, coalesce(sum(y.amount), 0) v
+           from payments y join v_transactions t on t.id = y.transaction_id
+           where y.date is not null${dateSql}${scopeSql} group by m, y.direction order by m`,
+        )
+        .bind(...dateArgs, ...args)
+        .all<{ m: string; direction: 'in' | 'out'; v: number }>()
+    ).results
+    // One bar per month of the range (all years: from the first to the last payment month).
+    const first = f.from?.slice(0, 7) ?? monthly[0]?.m ?? new Date().toISOString().slice(0, 7)
+    const last = f.to?.slice(0, 7) ?? monthly.at(-1)?.m ?? first
+    const months: string[] = []
+    for (let [y, m] = first.split('-').map(Number); `${y}-${String(m).padStart(2, '0')}` <= last && months.length < 120; m === 12 ? (y++, (m = 1)) : m++)
+      months.push(`${y}-${String(m).padStart(2, '0')}`)
+    const inM = months.map((k) => monthly.find((r) => r.m === k && r.direction === 'in')?.v ?? 0)
+    const outM = months.map((k) => monthly.find((r) => r.m === k && r.direction === 'out')?.v ?? 0)
+    // "Now" figures ignore the date range but follow division / client / project.
     const horizon = async (days: number) =>
       (
         await d1
           .prepare(
-            `select coalesce(sum(outstanding), 0) v from v_transactions
+            `select coalesce(sum(outstanding), 0) v from v_transactions t
              where direction = 'in' and status != 'void' and outstanding > 0
-               and due_date >= date('now') and due_date <= date('now', ?)`,
+               and due_date >= date('now') and due_date <= date('now', ?)${scopeSql}`,
           )
-          .bind(`+${days} days`)
+          .bind(`+${days} days`, ...args)
           .first<{ v: number }>()
       )?.v ?? 0
-    const byProject = await d1
-      .prepare(
-        `select p.code, p.name, c.name client,
-           (select coalesce(sum(total), 0) from transactions t where t.project_id = p.id and t.direction = 'in' and t.status != 'void') invoiced,
-           (select coalesce(sum(y.amount), 0) from payments y join transactions t on t.id = y.transaction_id where t.project_id = p.id and y.direction = 'in') collected,
-           (select coalesce(sum(y.amount), 0) from payments y join transactions t on t.id = y.transaction_id where t.project_id = p.id and y.direction = 'out') paid_out
-         from projects p join parties c on c.id = p.client_id order by p.code`,
-      )
-      .all<{ code: string; name: string; client: string; invoiced: number; collected: number; paid_out: number }>()
-    const inM = Array(12).fill(0) as number[]
-    const outM = Array(12).fill(0) as number[]
-    for (const r of monthly.results) (r.direction === 'in' ? inM : outM)[r.m - 1] = r.v
-    const total = (dir: 'in' | 'out') => totals.results.find((r) => r.direction === dir)?.v ?? 0
     const overdue = await d1
       .prepare(
-        `select coalesce(sum(outstanding), 0) v, count(*) n from v_transactions
-         where direction = 'in' and status != 'void' and overdue = 1`,
+        `select coalesce(sum(outstanding), 0) v, count(*) n from v_transactions t
+         where direction = 'in' and status != 'void' and overdue = 1${scopeSql}`,
       )
+      .bind(...args)
       .first<{ v: number; n: number }>()
+    const byProject = (
+      await d1
+        .prepare(
+          `select t.project_code code, t.project_name name, t.client,
+             sum(case when y.direction = 'in' then y.amount else 0 end) collected,
+             sum(case when y.direction = 'out' then y.amount else 0 end) paid_out
+           from payments y join v_transactions t on t.id = y.transaction_id
+           where t.project_id is not null${dateSql}${scopeSql}
+           group by t.project_id order by t.project_code`,
+        )
+        .bind(...dateArgs, ...args)
+        .all<{ code: string; name: string; client: string; collected: number; paid_out: number }>()
+    ).results
+    const invoiced = (
+      await d1
+        .prepare(
+          `select project_code code, coalesce(sum(total), 0) v from v_transactions t
+           where direction = 'in' and status != 'void' and project_id is not null${f.from ? ' and issue_date >= ?' : ''}${f.to ? ' and issue_date <= ?' : ''}${scopeSql}
+           group by project_id`,
+        )
+        .bind(...dateArgs, ...args)
+        .all<{ code: string; v: number }>()
+    ).results
+    const sum = (xs: number[]) => xs.reduce((a, v) => a + v, 0)
     return {
-      year,
-      years,
+      months,
       overdue: overdue?.v ?? 0,
       overdueCount: overdue?.n ?? 0,
-      collected: total('in'),
-      paidOut: total('out'),
+      collected: sum(inM),
+      paidOut: sum(outM),
       next30: await horizon(30),
       next90: await horizon(90),
       next180: await horizon(180),
       inM,
       outM,
-      byProject: byProject.results,
+      byProject: byProject.map((p) => ({ ...p, invoiced: invoiced.find((i) => i.code === p.code)?.v ?? 0 })),
     }
   })
 
@@ -566,7 +589,7 @@ export const renameDivisionFn = createServerFn({ method: 'POST' })
 // ---------------------------------------------------------------- tax
 
 export const getTax = createServerFn()
-  .validator(z.object({ year: z.number().int().optional(), companyId: z.number().int().optional() }))
+  .validator(z.object({ year: z.number().int().optional(), period: filterSearch.shape.period, companyId: z.number().int().optional() }))
   .handler(async ({ data }) => {
     await requireRole('owner', 'finance')
     const db = getDb()
@@ -582,7 +605,18 @@ export const getTax = createServerFn()
         .bind(companyId, String(year))
         .all<{ id: number; type: string; period: string; amount: number; date: string; number: string | null; description: string | null }>()
     ).results
-    return { companies, companyId, year, years: [year - 1, year, year + 1], rows, payments, today: new Date().toISOString().slice(0, 10) }
+    // A quarter or month keeps only those tax months.
+    const { from, to } = rangeOf({ year, period: data.period })
+    const inRange = (p: string) => p >= from!.slice(0, 7) && p <= to!.slice(0, 7)
+    return {
+      companies,
+      companyId,
+      year,
+      period: data.period,
+      rows: rows.filter((r) => inRange(r.period)),
+      payments: payments.filter((p) => inRange(p.period)),
+      today: new Date().toISOString().slice(0, 10),
+    }
   })
 
 export const recordTaxPaymentFn = createServerFn({ method: 'POST' })
@@ -604,12 +638,12 @@ export const recordTaxPaymentFn = createServerFn({ method: 'POST' })
 // ---------------------------------------------------------------- P&L by chart of accounts
 
 export const getPnl = createServerFn()
-  .validator(z.object({ year: z.number().int().optional() }))
+  .validator(filterSearch)
   .handler(async ({ data }) => {
     await requireRole('owner', 'finance')
     const db = getDb()
     const companies = await listCompanies(db)
     const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
-    const year = data.year ?? new Date().getFullYear()
-    return { company, year, years: [year - 1, year, year + 1], ...(await pnlByAccount(env.DB, company.id, year)) }
+    const f = toListFilter(data)
+    return { company, from: f.from, to: f.to, ...(await pnlByAccount(env.DB, company.id, f)) }
   })
