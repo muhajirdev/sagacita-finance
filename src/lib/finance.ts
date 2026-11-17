@@ -937,7 +937,7 @@ async function defaultRevenueAccount(db: Db) {
 }
 
 /** Sets the COA line on one or more transactions (any status; it only changes how the P&L groups them). */
-export const MEDICAL_TYPES = ['Rawat jalan', 'Rawat inap', 'Kacamata', 'Lainnya'] as const
+export const MEDICAL_TYPES = ['Outpatient', 'Inpatient', 'Dental', 'Vision'] as const
 
 /** Medical claims used this year per employee: approved (counts against the allowance) and still waiting approval. */
 export async function medicalUsage(d1: D1Database, year: number, employeeName?: string) {
@@ -987,7 +987,7 @@ export async function recordMedicalClaim(
     if (Math.round(input.amount) > left)
       throw new FinanceError(`${emp.name} has Rp ${Math.max(left, 0).toLocaleString('id-ID')} medical balance left for ${year} (limit Rp ${emp.medicalLimit.toLocaleString('id-ID')})`)
   }
-  const type = input.type?.trim() || 'Lainnya'
+  const type = input.type?.trim() || 'Outpatient'
   return recordTransaction(db, actor, {
     kind: 'reimbursement',
     companyId: company ?? null,

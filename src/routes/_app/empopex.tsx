@@ -398,7 +398,7 @@ function Employees({ employees, divisions }: { employees: Employee[]; divisions:
   )
 }
 
-const MEDICAL_TYPES = ['Rawat jalan', 'Rawat inap', 'Kacamata', 'Lainnya']
+const MEDICAL_TYPES = ['Outpatient', 'Inpatient', 'Dental', 'Vision']
 
 function MedicalClaims({ data, employees, year }: { data: Awaited<ReturnType<typeof getMedicalClaims>>; employees: Employee[]; year: number }) {
   const router = useRouter()
