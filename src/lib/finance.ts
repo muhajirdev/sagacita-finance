@@ -936,6 +936,24 @@ async function defaultRevenueAccount(db: Db) {
 }
 
 /** Sets the COA line on one or more transactions (any status; it only changes how the P&L groups them). */
+/**
+ * Finance tax's step on a client invoice: enter Billing (DPP) and Tax (PPN), with an optional note.
+ * Account receivable = billing + tax (minus PPh the client withholds, if any). The invoice then counts as sent.
+ */
+export async function inputInvoiceTax(db: Db, actor: Actor, id: number, input: { billing: number; tax: number; note?: string | null }) {
+  const t = await db.select().from(transactions).where(eq(transactions.id, id)).get()
+  if (!t || t.kind !== 'client_invoice') throw new FinanceError(`invoice ${id} not found`)
+  if (t.status === 'void') throw new FinanceError('invoice is void')
+  if ((await paidSoFar(db, id)) !== 0) throw new FinanceError('invoice already has payments; its amounts can no longer change')
+  const billing = Math.round(input.billing)
+  const tax = Math.round(input.tax)
+  if (!(billing > 0) || !(tax >= 0)) throw new FinanceError('billing must be more than 0 and tax 0 or more')
+  const set = { dpp: billing, ppn: tax, total: billing + tax - t.pph, note: input.note?.trim() || null, status: 'approved' as const, updatedAt: new Date().toISOString() }
+  const [row] = await db.update(transactions).set(set).where(eq(transactions.id, id)).returning()
+  await log(db, actor, 'update', 'transactions', id, { before: { dpp: t.dpp, ppn: t.ppn, total: t.total, status: t.status, note: t.note }, after: set })
+  return { ...row, accountReceivable: row.total }
+}
+
 export async function setTransactionAccount(db: Db, actor: Actor, ids: number[], accountRef: number | string | null) {
   let accountId: number | null = null
   if (accountRef != null) {
@@ -1332,6 +1350,7 @@ export type TransactionRow = {
   tax_period: string | null
   account_id: number | null
   account_code: string | null
+  note: string | null
   account: string | null
   category: string | null
   description: string | null

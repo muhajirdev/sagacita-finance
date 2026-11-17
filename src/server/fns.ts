@@ -28,6 +28,7 @@ import {
   settleAdvance,
   listAccounts,
   setTransactionAccount,
+  inputInvoiceTax,
   acknowledgeSpend,
   decideApproval,
   listApprovals,
@@ -290,6 +291,14 @@ export const setAccountFn = createServerFn({ method: 'POST' })
     const user = await requireUser()
     if (user.role !== 'owner' && user.role !== 'finance') throw new Error('only finance can set the COA')
     return setTransactionAccount(getDb(), user.email, data.ids, data.accountId)
+  })
+
+export const inputInvoiceTaxFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.number().int(), billing: z.number(), tax: z.number(), note: z.string().nullable().optional() }))
+  .handler(async ({ data: { id, ...input } }) => {
+    const user = await requireUser()
+    if (user.role !== 'owner' && user.role !== 'finance') throw new Error('only finance can enter invoice tax')
+    return inputInvoiceTax(getDb(), user.email, id, input)
   })
 
 export const getApprovals = createServerFn()

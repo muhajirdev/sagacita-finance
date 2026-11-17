@@ -210,6 +210,8 @@ export const transactions = sqliteTable(
     accountId: integer('account_id').references(() => accounts.id),
     /** tax_payment rows: the tax month it pays for (masa pajak), YYYY-MM. */
     taxPeriod: text('tax_period'),
+    /** Free-text note, e.g. finance tax's remark when entering an invoice's billing + tax. */
+    note: text('note'),
     /** For rows with no project (company spend): which division it belongs to, if any. */
     divisionId: integer('division_id').references(() => divisions.id),
     /** Company OpEx category for spend that is not on a project: matches opex_budgets.category. */
