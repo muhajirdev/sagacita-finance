@@ -560,7 +560,7 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Finance PIC step of the spend flow: acknowledge a pending spend approval and propose the pay date (also set as the bill due date). ' +
-        'Only call when the finance PIC said so. After this, BOD releases it with decide_approval.',
+        'Only call when the finance PIC said so. After this, the owner approves it with decide_approval.',
       inputSchema: {
         actor: actorField,
         id: z.number().int().describe('Approval id'),
@@ -575,7 +575,7 @@ function createServer(env: Env, appUrl: string) {
     {
       description:
         'Approve or reject a pending approval. Only call this when the approver themselves said so (e.g. the owner replied "approve 12"). ' +
-        'Spend flow: team submits -> finance PIC acknowledge_spend (sets pay date) -> BOD (owner) approves here = release. ' +
+        'Spend flow: team submits -> finance PIC acknowledge_spend (sets pay date) -> BOD (owner) approves here -> on the pay date the owner releases it in the web Payment run (not via MCP) -> Finance records the payment (record_payment refuses unreleased spend). ' +
         'Spend cannot be approved before acknowledge_spend. Approving spend makes it payable; rejecting voids it. Approving a budget makes the project active.',
       inputSchema: {
         actor: actorField,

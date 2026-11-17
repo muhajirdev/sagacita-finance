@@ -5,10 +5,13 @@ import { PPH_TYPES, TRANSACTION_KINDS } from '#/db/schema'
 import type { TransactionRow } from '#/lib/finance'
 import { StatusPill } from '#/components/ui'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { recordPaymentFn, recordTransactionFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
+import { recordPaymentFn, recordTransactionFn, releaseFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { Select, ui } from '#/components/dialogs'
 
-export function TransactionTable({ rows, showProject = true }: { rows: TransactionRow[]; showProject?: boolean }) {
+/** Spend going out needs the owner's Release (the pay-date pick) before Finance can pay it. */
+export const needsRelease = (t: TransactionRow) => t.direction === 'out' && t.kind !== 'tax_payment' && t.status === 'approved' && t.outstanding > 0 && !t.released_at
+
+export function TransactionTable({ rows, showProject = true, canRelease = false }: { rows: TransactionRow[]; showProject?: boolean; canRelease?: boolean }) {
   const router = useRouter()
   const act = async (fn: () => Promise<unknown>) => {
     try {
@@ -77,7 +80,16 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                     Approve
                   </button>
                 )}
-                {t.status !== 'void' && t.outstanding !== 0 && (
+                {needsRelease(t) &&
+                  (canRelease ? (
+                    <button className="btn px-3 py-1 text-[12px]" onClick={() => act(() => releaseFn({ data: { ids: [t.id] } }))}>
+                      Release
+                    </button>
+                  ) : (
+                    <span className="text-[12px] text-muted">Waiting owner release</span>
+                  ))}
+                {t.released_at && t.outstanding > 0 && <span className="pill-good">Released</span>}
+                {t.status !== 'void' && t.outstanding !== 0 && !needsRelease(t) && (
                   <button
                     className="btn-ghost"
                     onClick={async () => {
