@@ -52,6 +52,9 @@ import {
   settleAdvance,
   recordTaxPayment,
   taxDue,
+  listAccounts,
+  setTransactionAccount,
+  pnlByAccount,
   createCompany,
   updateCompany,
   createDivision,
@@ -75,7 +78,7 @@ const SCHEMA_GUIDE = `Sagacita Finance data model (SQLite / Cloudflare D1). Mone
 
 START HERE: v_transactions — every transaction with names joined in and paid / outstanding / overdue computed.
   columns: id, kind, direction, status, number, issue_date, due_date, dpp, ppn, pph_type, pph, total,
-           paid, outstanding, overdue (0/1), advance_id, lpj_due, category, description, requested_by, source, attachment_url,
+           paid, outstanding, overdue (0/1), advance_id, lpj_due, tax_period, account_id, account_code, account (COA), category, description, requested_by, source, attachment_url,
            company_id, company, division_id, division, project_id, project_code, project_name,
            client_id, client, budget_line_id, budget_line, party_id, party, party_kind, created_at, updated_at
 
@@ -94,6 +97,7 @@ Tables:
   parties       clients, vendors, employees: kind, name (brand for clients), legal_entity (PT), code (initials in project codes), address, payment_terms_days (TOP), npwp, bank_account
   divisions     agencies / brands -> company_id (a project's PT comes from its division)
   companies     PTs: name, code (short name: SRI, SRAB, SKAB, FAB, BRAB), npwp, address. Tax reporting is per company
+  accounts      chart of accounts (COA): code, name, group (revenue|cost_of_service|operating_expense|other_income|other_expense|income_tax|balance). transactions.account_id points here.
   opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
   approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
@@ -224,6 +228,7 @@ function createServer(env: Env, appUrl: string) {
         divisionId: z.number().int().optional().describe('For company spend: the division it belongs to, if any'),
         partyName: z.string().optional().describe('Vendor name from the vendor list (vendor_bill), or employee name (created if new). Client comes from the project.'),
         category: z.string().optional().describe('For company spend: an opex category from list_reference, e.g. "Office Rental"'),
+        accountId: z.number().int().optional().describe('COA line from list_accounts (e.g. 5000.02.01 Artist & Talent). Invoices default to Billing.'),
         description: z.string().optional(),
         number: z.string().optional().describe('Invoice / bill number on the paper'),
         issueDate: z.string().optional(),
@@ -319,6 +324,38 @@ function createServer(env: Env, appUrl: string) {
       inputSchema: { actor: actorField, id: z.number().int(), name: z.string().optional(), companyId: z.number().int().optional() },
     },
     async ({ actor, id, ...input }) => safe(() => updateDivision(db, actor, id, input)),
+  )
+
+  server.registerTool(
+    'list_accounts',
+    { description: 'The chart of accounts (COA) with ids, codes and P&L group. Expenses and invoices are categorised with these.', inputSchema: {} },
+    async () => safe(() => listAccounts(db)),
+  )
+
+  server.registerTool(
+    'set_account',
+    {
+      description:
+        'Set the COA line (chart of accounts) on one or more transactions, by account id or code (e.g. "5000.02.01"). null clears it. ' +
+        'Only P&L accounts. Do not bulk-change historical (imported) rows without the finance PIC confirming the mapping. Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        transactionIds: z.array(z.number().int()).min(1).max(200),
+        account: z.union([z.number().int(), z.string()]).nullable(),
+      },
+    },
+    async ({ actor, transactionIds, account }) => safe(() => setTransactionAccount(db, actor, transactionIds, account)),
+  )
+
+  server.registerTool(
+    'pnl_by_account',
+    {
+      description:
+        'P&L statement for a PT and year by chart of accounts, in the statement order (Revenue, Cost of Service, Operating Expenses, Other, PPh Final), with totals. ' +
+        'Rows with no COA yet show as "Not categorised".',
+      inputSchema: { companyId: z.number().int(), year: z.number().int() },
+    },
+    async ({ companyId, year }) => safe(() => pnlByAccount(env.DB, companyId, year)),
   )
 
   server.registerTool(

@@ -25,6 +25,8 @@ import {
   recordTransaction,
   setTransactionStatus,
   settleAdvance,
+  listAccounts,
+  setTransactionAccount,
   acknowledgeSpend,
   decideApproval,
   listApprovals,
@@ -129,6 +131,7 @@ export const getReference = createServerFn().handler(async () => {
     categories: await listOpexCategories(db),
     clients: (await listParties(db, 'client')).map((c) => ({ id: c.id, name: c.name, code: c.code })),
     vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name })),
+    accounts: (await listAccounts(db)).filter((a) => a.group !== 'balance'),
   }
 })
 
@@ -215,6 +218,7 @@ export const recordTransactionFn = createServerFn({ method: 'POST' })
       companyId: z.number().int().nullable().optional(),
       partyName: z.string().optional(),
       category: z.string().optional(),
+      accountId: z.number().int().nullable().optional(),
       description: z.string().optional(),
       number: z.string().optional(),
       issueDate: z.string().optional(),
@@ -257,6 +261,14 @@ export const settleAdvanceFn = createServerFn({ method: 'POST' })
       note: data.note,
       createdBy: user.id,
     })
+  })
+
+export const setAccountFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ids: z.array(z.number().int()).min(1), accountId: z.number().int().nullable() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    if (user.role !== 'owner' && user.role !== 'finance') throw new Error('only finance can set the COA')
+    return setTransactionAccount(getDb(), user.email, data.ids, data.accountId)
   })
 
 export const getApprovals = createServerFn()

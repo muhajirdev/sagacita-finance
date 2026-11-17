@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 
 import {
+  accounts,
   documents,
   payrollMonths,
   activityLog,
@@ -501,6 +502,8 @@ export type RecordTransactionInput = {
   /** Vendor / employee / client name; created if it does not exist. Clients come from the project when omitted. */
   partyName?: string | null
   category?: string | null
+  /** Chart of accounts line. Client invoices default to the Billing (revenue) account. */
+  accountId?: number | null
   description?: string | null
   number?: string | null
   issueDate?: string | null
@@ -571,6 +574,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
       budgetLineId: input.budgetLineId ?? null,
       divisionId: project ? null : (input.divisionId ?? null),
       category: input.category || null,
+      accountId: input.accountId ?? (direction === 'in' ? await defaultRevenueAccount(db) : null),
       description: input.description || null,
       issueDate,
       dueDate,
@@ -801,6 +805,7 @@ export async function settleAdvance(
     companyId: adv.companyId,
     partyId: adv.partyId,
     advanceId: adv.id,
+    accountId: adv.accountId,
     issueDate: date,
     requestedBy: adv.requestedBy,
     source: auditSource(db).source === 'import' ? ('import' as const) : ('web' as const),
@@ -849,6 +854,112 @@ export async function settleAdvance(
   await db.update(transactions).set({ status: 'settled', updatedAt: new Date().toISOString() }).where(eq(transactions.id, adv.id))
   await log(db, actor, 'update', 'transactions', adv.id, { status: 'settled', settledBy: bal.id })
   return { advance: { ...adv, status: 'settled' as const }, lines: rows, balance: bal, spent, difference: balance }
+}
+
+// ------------------------------------------------------------------ chart of accounts (COA) and P&L
+
+export async function listAccounts(db: Db) {
+  return db.select().from(accounts).orderBy(asc(accounts.sortOrder))
+}
+
+async function defaultRevenueAccount(db: Db) {
+  return (await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.group, 'revenue')).orderBy(asc(accounts.sortOrder)).get())?.id ?? null
+}
+
+/** Sets the COA line on one or more transactions (any status; it only changes how the P&L groups them). */
+export async function setTransactionAccount(db: Db, actor: Actor, ids: number[], accountRef: number | string | null) {
+  let accountId: number | null = null
+  if (accountRef != null) {
+    const a = await db
+      .select()
+      .from(accounts)
+      .where(typeof accountRef === 'number' ? eq(accounts.id, accountRef) : eq(accounts.code, accountRef))
+      .get()
+    if (!a) throw new FinanceError(`account ${accountRef} not found; see list_accounts`)
+    if (a.group === 'balance') throw new FinanceError(`${a.code} ${a.name} is a balance-sheet account, not a P&L line`)
+    accountId = a.id
+  }
+  let n = 0
+  for (const id of ids) {
+    const [row] = await db
+      .update(transactions)
+      .set({ accountId, updatedAt: new Date().toISOString() })
+      .where(eq(transactions.id, id))
+      .returning({ id: transactions.id })
+    if (!row) throw new FinanceError(`transaction ${id} not found`)
+    await log(db, actor, 'update', 'transactions', id, { accountId })
+    n++
+  }
+  return { updated: n, accountId }
+}
+
+export type PnlLine = { group: string; code: string | null; name: string; amount: number }
+
+/**
+ * P&L by chart of accounts for one PT and year, in the statement's order.
+ * Revenue and costs = dpp of non-void transactions by account (issue date). Payroll from Employee OpEx goes to
+ * the Salary, BPJS and PPh 21 (Employee) accounts. Rows with no account yet show as "Not categorised".
+ */
+export async function pnlByAccount(d1: D1Database, companyId: number, year: number) {
+  const y = String(year)
+  const rows = (
+    await d1
+      .prepare(
+        `select a."group" grp, a.code, a.name, a.sort_order so, t.direction, case when t.project_id is null then 0 else 1 end proj, sum(t.dpp) v
+         from transactions t left join accounts a on a.id = t.account_id
+         where t.company_id = ? and t.status != 'void' and t.kind != 'tax_payment' and substr(t.issue_date, 1, 4) = ?
+         group by 1, 2, 3, 4, 5, 6 having sum(t.dpp) != 0`,
+      )
+      .bind(companyId, y)
+      .all<{ grp: string | null; code: string | null; name: string | null; so: number | null; direction: string; proj: number; v: number }>()
+  ).results
+  const pay = await d1
+    .prepare(
+      `select coalesce(sum(p.net_salary), 0) salary, coalesce(sum(p.bpjs_tk + p.bpjs_kes), 0) bpjs, coalesce(sum(p.pph21), 0) pph21
+       from payroll_months p join divisions d on d.id = p.division_id where d.company_id = ? and substr(p.period, 1, 4) = ?`,
+    )
+    .bind(companyId, y)
+    .first<{ salary: number; bpjs: number; pph21: number }>()
+  const acc = (
+    await d1.prepare(`select code, name, "group" grp, sort_order so from accounts`).all<{ code: string; name: string; grp: string; so: number }>()
+  ).results
+  const lines = new Map<string, PnlLine & { so: number }>()
+  const put = (group: string, code: string | null, name: string, so: number, v: number) => {
+    if (!v) return
+    const k = group + '|' + (code ?? name)
+    const cur = lines.get(k) ?? { group, code, name, amount: 0, so }
+    cur.amount += v
+    lines.set(k, cur)
+  }
+  for (const r of rows) {
+    if (r.code) put(r.grp!, r.code, r.name!, r.so ?? 0, r.v)
+    else if (r.direction === 'in') put('revenue', null, 'Not categorised', 999, r.v)
+    else put(r.proj ? 'cost_of_service' : 'operating_expense', null, 'Not categorised', 999, r.v)
+  }
+  const byName = (re: RegExp) => acc.find((a) => a.grp !== 'balance' && re.test(a.name))
+  for (const [re, v] of [
+    [/^Salary$/i, pay?.salary ?? 0],
+    [/^BPJS Ketenagakerjaan$/i, pay?.bpjs ?? 0],
+    [/PPh\s+21 \(Employee\)/i, pay?.pph21 ?? 0],
+  ] as const) {
+    const a = byName(re)
+    if (a && a.grp !== 'balance') put(a.grp, a.code, a.name, a.so, v)
+    else put('operating_expense', null, 'Payroll', 998, v)
+  }
+  const order = ['revenue', 'cost_of_service', 'operating_expense', 'other_income', 'other_expense', 'income_tax']
+  const all = [...lines.values()].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || a.so - b.so)
+  const sum = (g: string) => all.filter((l) => l.group === g).reduce((a, l) => a + l.amount, 0)
+  const revenue = sum('revenue')
+  const cost = sum('cost_of_service')
+  const opex = sum('operating_expense')
+  const other = sum('other_income') - sum('other_expense')
+  const beforeTax = revenue - cost - opex + other
+  const tax = sum('income_tax')
+  return {
+    lines: all.map(({ so: _so, ...l }) => l),
+    totals: { revenue, costOfService: cost, grossProfit: revenue - cost, operatingExpenses: opex, operatingProfit: revenue - cost - opex, other, beforeTax, incomeTax: tax, netProfit: beforeTax - tax },
+    uncategorised: all.filter((l) => !l.code).reduce((a, l) => a + l.amount, 0),
+  }
 }
 
 // ------------------------------------------------------------------ tax payments and tax due
@@ -1147,6 +1258,10 @@ export type TransactionRow = {
   advance_id: number | null
   /** Cash advances: LPJ (settlement report) deadline, 5 working days after it was paid. Null once settled. */
   lpj_due: string | null
+  tax_period: string | null
+  account_id: number | null
+  account_code: string | null
+  account: string | null
   category: string | null
   description: string | null
   requested_by: string | null

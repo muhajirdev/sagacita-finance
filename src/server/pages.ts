@@ -33,6 +33,7 @@ import {
   listCompanies,
   recordTaxPayment,
   taxDue,
+  pnlByAccount,
 } from '#/lib/finance'
 
 type Role = (typeof USER_ROLES)[number]
@@ -592,4 +593,17 @@ export const recordTaxPaymentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireRole('owner', 'finance')
     return recordTaxPayment(getDb(), user.email, { ...data, createdBy: user.id })
+  })
+
+// ---------------------------------------------------------------- P&L by chart of accounts
+
+export const getPnl = createServerFn()
+  .validator(z.object({ year: z.number().int().optional() }))
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const db = getDb()
+    const companies = await listCompanies(db)
+    const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
+    const year = data.year ?? new Date().getFullYear()
+    return { company, year, years: [year - 1, year, year + 1], ...(await pnlByAccount(env.DB, company.id, year)) }
   })

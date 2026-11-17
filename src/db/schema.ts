@@ -136,6 +136,20 @@ export const budgetLines = sqliteTable(
   (t) => [index('budget_lines_project').on(t.projectId)],
 )
 
+// ---------------------------------------------------------------- chart of accounts
+
+/** P&L groups in the order the statement prints them; balance = balance-sheet accounts (not on the P&L). */
+export const ACCOUNT_GROUPS = ['revenue', 'cost_of_service', 'operating_expense', 'other_income', 'other_expense', 'income_tax', 'balance'] as const
+
+/** Chart of accounts (COA), from the client's trial balance. Transactions point at one with account_id. */
+export const accounts = sqliteTable('accounts', {
+  id: id(),
+  code: text('code').notNull().unique(), // e.g. 5000.02.01
+  name: text('name').notNull(),
+  group: text('group', { enum: ACCOUNT_GROUPS }).notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+})
+
 // ---------------------------------------------------------------- transactions (the raw data)
 
 export const TRANSACTION_KINDS = [
@@ -190,6 +204,8 @@ export const transactions = sqliteTable(
      * negative = refund owed to the company.
      */
     advanceId: integer('advance_id'),
+    /** Chart of accounts line (COA) for the P&L. Client invoices default to Billing. */
+    accountId: integer('account_id').references(() => accounts.id),
     /** tax_payment rows: the tax month it pays for (masa pajak), YYYY-MM. */
     taxPeriod: text('tax_period'),
     /** For rows with no project (company spend): which division it belongs to, if any. */
