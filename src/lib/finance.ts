@@ -1327,6 +1327,8 @@ export type TransactionRow = {
   advance_id: number | null
   /** Cash advances: LPJ (settlement report) deadline, 5 working days after it was paid. Null once settled. */
   lpj_due: string | null
+  /** Each payment as "YYYY-MM-DD amount", oldest first, joined by "; " (instalments). */
+  payment_list: string | null
   tax_period: string | null
   account_id: number | null
   account_code: string | null
@@ -1363,7 +1365,9 @@ export async function listTransactions(d1: D1Database, f: TransactionFilter = {}
   if (f.divisionId) (where.push('division_id = ?'), args.push(f.divisionId))
   if (f.clientId) (where.push('client_id = ?'), args.push(f.clientId))
   if (f.projectCode) (where.push('project_code = ?'), args.push(f.projectCode))
-  const q = `select * from v_transactions ${where.length ? 'where ' + where.join(' and ') : ''}
+  const q = `select v_transactions.*, (select group_concat(x, '; ') from (select p.date || ' ' || p.amount x from payments p
+      where p.transaction_id = v_transactions.id order by p.date, p.id)) payment_list
+    from v_transactions ${where.length ? 'where ' + where.join(' and ') : ''}
     order by coalesce(due_date, issue_date) desc, id desc limit ?`
   args.push(Math.min(f.limit ?? 200, 2000))
   const { results } = await d1

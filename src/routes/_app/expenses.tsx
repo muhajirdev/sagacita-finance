@@ -163,6 +163,7 @@ function Expenses() {
                   <td className="td num">
                     {rp(t.total)}
                     {t.paid > 0 && t.outstanding > 0 && <div className="text-[12px] text-muted">paid {rp(t.paid)}</div>}
+                    <PaymentList list={t.payment_list} />
                   </td>
                   <td className="td">{t.requested_by ?? '—'}</td>
                   <td className="td">
@@ -428,5 +429,23 @@ function ExpenseForm({
         </div>
       </form>
     </Modal>
+  )
+}
+
+/** Shows each instalment when a row was paid more than once. */
+function PaymentList({ list }: { list: string | null }) {
+  const items = (list ?? '').split('; ').filter(Boolean)
+  if (items.length < 2) return null
+  return (
+    <div className="mt-1 text-[12px] text-muted">
+      {items.map((x) => {
+        const [d, a] = x.split(' ')
+        return (
+          <div key={x}>
+            {d} · {rp(Number(a))}
+          </div>
+        )
+      })}
+    </div>
   )
 }

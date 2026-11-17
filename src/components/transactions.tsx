@@ -62,7 +62,12 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                   </div>
                 )}
               </td>
-              <td className="td num">{rp(t.outstanding)}</td>
+              <td className="td num" title={t.payment_list ? 'Payments: ' + t.payment_list : undefined}>
+                {rp(t.outstanding)}
+                {(t.payment_list ?? '').includes(';') && (
+                  <div className="text-[12px] text-muted">{t.payment_list!.split('; ').length} payments</div>
+                )}
+              </td>
               <td className="td">
                 <StatusPill status={t.status} overdue={!!t.overdue} />
               </td>
