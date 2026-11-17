@@ -5,7 +5,7 @@ import { env } from 'cloudflare:workers'
 import { asc, eq, like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, USER_ROLES, divisions, opexBudgets, payrollMonths, projects, users } from '#/db/schema'
+import { PPH_TYPES, PROJECT_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -226,8 +226,9 @@ export const getPayroll = createServerFn()
   .validator(yearSchema)
   .handler(async ({ data }) => {
     await requireRole('owner', 'hr')
-    const year = data.year ?? new Date().getFullYear()
     const db = getDb()
+    const latest = await db.select({ p: sql<string | null>`max(${payrollMonths.period})` }).from(payrollMonths).get()
+    const year = data.year ?? (latest?.p ? Number(latest.p.slice(0, 4)) : new Date().getFullYear())
     const rows = await db
       .select()
       .from(payrollMonths)
@@ -252,6 +253,52 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
     const user = await requireRole('owner', 'hr')
     await recordPayroll(getDb(), user.email, data)
     return { ok: true }
+  })
+
+// ------------------------------------------------------------ employees (HR data, owner / hr)
+
+export const getEmployees = createServerFn().handler(async () => {
+  await requireRole('owner', 'hr')
+  return getDb().select().from(employees).orderBy(asc(employees.name))
+})
+
+const employeeFields = z.object({
+  name: z.string().min(1),
+  position: z.string().nullable().optional(),
+  divisionId: z.number().int().nullable().optional(),
+  ktp: z.string().nullable().optional(),
+  npwp: z.string().nullable().optional(),
+  ptkp: z.string().nullable().optional(),
+  bpjsTkNo: z.string().nullable().optional(),
+  bpjsKesNo: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  bankAccount: z.string().nullable().optional(),
+  baseSalary: z.number().int().nonnegative().nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+})
+
+/** Add (no id) or update (with id) an employee. Logged like every other change. */
+export const saveEmployeeFn = createServerFn({ method: 'POST' })
+  .validator(employeeFields.extend({ id: z.number().int().optional() }))
+  .handler(async ({ data: { id, ...values } }) => {
+    const user = await requireRole('owner', 'hr')
+    const db = getDb()
+    if (id) {
+      const [row] = await db
+        .update(employees)
+        .set({ ...values, updatedAt: new Date().toISOString() })
+        .where(eq(employees.id, id))
+        .returning()
+      if (!row) throw new Error('employee not found')
+      await log(db, user.email, 'update', 'employees', id, { name: row.name, changed: Object.keys(values) })
+      return row
+    }
+    const [row] = await db.insert(employees).values(values).returning()
+    await log(db, user.email, 'create', 'employees', row.id, { name: row.name, position: row.position, divisionId: row.divisionId })
+    return row
   })
 
 // ------------------------------------------------------------ company opex

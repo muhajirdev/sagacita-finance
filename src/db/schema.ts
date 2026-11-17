@@ -335,6 +335,36 @@ export const opexBudgets = sqliteTable(
  * Monthly payroll totals per division (Employee OpEx). Kept out of transactions on purpose:
  * salary data is owner/hr only, and the MCP query tool cannot read this table.
  */
+/**
+ * Employee records (HR data). Sensitive: owner and HR only on the web, never readable through the agent's query tool.
+ * Payroll stays as monthly totals in payroll_months; base_salary here is the reference amount per person.
+ */
+export const employees = sqliteTable(
+  'employees',
+  {
+    id: id(),
+    name: text('name').notNull(),
+    position: text('position'),
+    divisionId: integer('division_id').references(() => divisions.id),
+    ktp: text('ktp'),
+    npwp: text('npwp'),
+    /** PTKP status for PPh 21, e.g. TK/0, K/1. */
+    ptkp: text('ptkp'),
+    bpjsTkNo: text('bpjs_tk_no'),
+    bpjsKesNo: text('bpjs_kes_no'),
+    address: text('address'),
+    phone: text('phone'),
+    bankAccount: text('bank_account'),
+    baseSalary: integer('base_salary'),
+    startDate: text('start_date'),
+    endDate: text('end_date'), // set when the person leaves
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('employees_division').on(t.divisionId)],
+)
+
 export const payrollMonths = sqliteTable(
   'payroll_months',
   {
