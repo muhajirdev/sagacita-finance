@@ -11,11 +11,11 @@ export const Route = createFileRoute('/lpj/$token')({
   component: LpjPage,
 })
 
-type Row = { key: number; date: string; description: string; amount: string; documentId: number | null; filename: string | null; uploading: boolean }
+type Row = { key: number; date: string; description: string; amount: string; accountId: number | null; documentId: number | null; filename: string | null; uploading: boolean }
 
 const today = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10)
 let nextKey = 1
-const blank = (): Row => ({ key: nextKey++, date: today(), description: '', amount: '', documentId: null, filename: null, uploading: false })
+const blank = (): Row => ({ key: nextKey++, date: today(), description: '', amount: '', accountId: null, documentId: null, filename: null, uploading: false })
 
 /** Phone photos are often 4-8 MB: shrink to a 1600 px JPEG before upload. PDFs go as they are. */
 async function shrink(file: File): Promise<Blob> {
@@ -40,7 +40,7 @@ function LpjPage() {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>(() =>
     data?.items.length
-      ? data.items.map((i) => ({ ...blank(), date: i.date, description: i.description, amount: String(i.amount), documentId: i.documentId ?? null, filename: i.documentId ? 'Struk sudah diunggah' : null }))
+      ? data.items.map((i) => ({ ...blank(), date: i.date, description: i.description, amount: String(i.amount), accountId: i.accountId ?? null, documentId: i.documentId ?? null, filename: i.documentId ? 'Struk sudah diunggah' : null }))
       : [blank()],
   )
   const [note, setNote] = useState(data?.note ?? '')
@@ -83,6 +83,7 @@ function LpjPage() {
     const items = rows.filter((r) => r.description.trim() || Number(r.amount))
     if (!items.length) return setError('Tambahkan minimal satu item.')
     if (items.some((r) => !r.description.trim() || !(Number(r.amount) > 0))) return setError('Setiap item perlu keterangan dan jumlah.')
+    if (items.some((r) => !r.accountId)) return setError('Pilih akun (COA) untuk setiap item.')
     if (items.some((r) => r.uploading)) return setError('Tunggu sampai struk selesai diunggah.')
     setBusy(true)
     try {
@@ -90,7 +91,7 @@ function LpjPage() {
         data: {
           token,
           note: note || undefined,
-          items: items.map((r) => ({ date: r.date, description: r.description.trim(), amount: Math.round(Number(r.amount)), documentId: r.documentId })),
+          items: items.map((r) => ({ date: r.date, description: r.description.trim(), amount: Math.round(Number(r.amount)), accountId: r.accountId, documentId: r.documentId })),
         },
       })
       await router.invalidate()
@@ -128,6 +129,7 @@ function LpjPage() {
                   {i.description}
                   <span className="block text-[12px] text-muted">
                     {i.date}
+                    {i.accountId ? ' · ' + (data.accounts.find((a) => a.id === i.accountId)?.code ?? '') : ''}
                     {i.documentId ? ' · struk ✓' : ' · tanpa struk'}
                   </span>
                 </span>
@@ -153,6 +155,18 @@ function LpjPage() {
                 )}
               </div>
               <input className="input" placeholder="Keterangan (mis. Konsumsi meeting klien)" value={r.description} onChange={(e) => set(r.key, { description: e.target.value })} />
+              <select
+                className={`input ${r.accountId ? '' : 'text-muted'}`}
+                value={r.accountId ?? ''}
+                onChange={(e) => set(r.key, { accountId: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">Pilih akun (COA)</option>
+                {data.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} {a.name}
+                  </option>
+                ))}
+              </select>
               <div className="grid grid-cols-2 gap-2">
                 <input className="input" type="date" value={r.date} onChange={(e) => set(r.key, { date: e.target.value })} />
                 <input

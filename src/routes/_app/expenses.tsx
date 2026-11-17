@@ -406,7 +406,7 @@ function LpjReview({
   onSettle: (date: string, accountIds: (number | null)[]) => void
 }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [coa, setCoa] = useState<(number | null)[]>(() => sub.items.map(() => null))
+  const [coa, setCoa] = useState<(number | null)[]>(() => sub.items.map((i) => i.accountId ?? null))
   const diff = sub.spent - advance.total
   return (
     <Modal title={`LPJ ${advance.number ?? ''} · ${advance.requested_by ?? advance.party ?? ''}`} onClose={onClose} wide>
