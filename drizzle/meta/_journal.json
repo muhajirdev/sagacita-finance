@@ -134,6 +134,13 @@
       "when": 1794907500866,
       "tag": "0018_opening_balances",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1794907739709,
+      "tag": "0019_payroll_allowance",
+      "breakpoints": true
     }
   ]
 }

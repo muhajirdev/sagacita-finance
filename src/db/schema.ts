@@ -304,11 +304,11 @@ export const approvals = sqliteTable(
 
 // ---------------------------------------------------------------- documents
 
-export const DOCUMENT_ENTITIES = ['transaction', 'party', 'project'] as const
+export const DOCUMENT_ENTITIES = ['transaction', 'party', 'project', 'employee'] as const
 
 /**
  * Files kept in R2 (binding DOCS): invoice / receipt photos on a transaction, KTP / NPWP on a party,
- * contracts or POs on a project. Served at /files/<id> to signed-in users and the MCP token.
+ * contracts or POs on a project, the employment contract on an employee (owner / HR only). Served at /files/<id> to signed-in users and the MCP token.
  */
 export const documents = sqliteTable(
   'documents',
@@ -420,6 +420,7 @@ export const payrollMonths = sqliteTable(
       .notNull()
       .references(() => divisions.id),
     netSalary: integer('net_salary').notNull().default(0),
+    allowance: integer('allowance').notNull().default(0), // tunjangan
     bpjsTk: integer('bpjs_tk').notNull().default(0), // company share
     bpjsKes: integer('bpjs_kes').notNull().default(0), // company share
     pph21: integer('pph21').notNull().default(0),

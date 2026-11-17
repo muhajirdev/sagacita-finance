@@ -1,0 +1,1 @@
+ALTER TABLE `payroll_months` ADD `allowance` integer DEFAULT 0 NOT NULL;

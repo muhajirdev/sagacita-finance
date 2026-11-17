@@ -2,12 +2,13 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 import { env } from 'cloudflare:workers'
-import { asc, eq, like, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, TAX_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
+import { PPH_TYPES, PROJECT_TYPES, TAX_TYPES, USER_ROLES, divisions, documents, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
+import { checkNpwp, cleanNik } from '#/lib/employee'
 import { filterSearch, rangeOf, toListFilter } from '#/lib/filters'
 import {
   deleteBudgetLine,
@@ -18,6 +19,7 @@ import {
   listDivisions,
   log,
   recordPayroll,
+  copyPayrollFromPrevious,
   setPayrollMonthStatus,
   listParties,
   listProjects,
@@ -158,7 +160,7 @@ export const getPerformance = createServerFn()
     let owner: null | { projectExpenses: number; employeeOpex: number; companyOpex: number } = null
     if (user.role === 'owner') {
       const pay = await db
-        .select({ v: sql<number>`coalesce(sum(net_salary + bpjs_tk + bpjs_kes + pph21), 0)` })
+        .select({ v: sql<number>`coalesce(sum(net_salary + allowance + bpjs_tk + bpjs_kes + pph21), 0)` })
         .from(payrollMonths)
         .where(sql`${payrollMonths.period} >= ${f.from?.slice(0, 7) ?? '0000'} and ${payrollMonths.period} <= ${f.to?.slice(0, 7) ?? '9999'}`)
         .get()
@@ -299,6 +301,7 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
       period: z.string().regex(/^\d{4}-\d{2}$/),
       divisionId: z.number().int(),
       netSalary: z.number().nonnegative(),
+      allowance: z.number().nonnegative(),
       bpjsTk: z.number().nonnegative(),
       bpjsKes: z.number().nonnegative(),
       pph21: z.number().nonnegative(),
@@ -309,6 +312,13 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
     const user = await requireRole('owner', 'hr')
     await recordPayroll(getDb(), user.email, data)
     return { ok: true }
+  })
+
+export const copyPayrollFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }))
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'hr')
+    return copyPayrollFromPrevious(getDb(), user.email, data.period)
   })
 
 // ------------------------------------------------------------ employees (HR data, owner / hr)
@@ -337,7 +347,17 @@ export const medicalClaimFn = createServerFn({ method: 'POST' })
 
 export const getEmployees = createServerFn().handler(async () => {
   await requireRole('owner', 'hr')
-  return getDb().select().from(employees).orderBy(asc(employees.name))
+  const db = getDb()
+  const rows = await db.select().from(employees).orderBy(asc(employees.name))
+  // Latest employment contract per employee (PDF kept in R2).
+  const docs = await db
+    .select({ id: documents.id, entityId: documents.entityId, filename: documents.filename })
+    .from(documents)
+    .where(and(eq(documents.entity, 'employee'), eq(documents.kind, 'contract')))
+    .orderBy(desc(documents.id))
+  const contract = new Map<number, { id: number; filename: string }>()
+  for (const d of docs) if (!contract.has(d.entityId)) contract.set(d.entityId, { id: d.id, filename: d.filename })
+  return rows.map((e) => ({ ...e, contract: contract.get(e.id) ?? null }))
 })
 
 const employeeFields = z.object({
@@ -365,6 +385,10 @@ export const saveEmployeeFn = createServerFn({ method: 'POST' })
   .handler(async ({ data: { id, ...values } }) => {
     const user = await requireRole('owner', 'hr')
     const db = getDb()
+    // NIK is mandatory for new employees; older records without one can still be edited until it is filled.
+    if (values.ktp?.trim()) values.ktp = cleanNik(values.ktp)
+    else if (!id) throw new Error('NIK (KTP) is required')
+    if (values.npwp !== undefined) values.npwp = checkNpwp(values.npwp)
     if (id) {
       const [row] = await db
         .update(employees)

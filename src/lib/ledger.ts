@@ -88,7 +88,7 @@ export async function generalLedger(d1: D1Database, companyId: number, f: ListFi
       : (
           await d1
             .prepare(
-              `select p.period, d.name division, p.net_salary salary, p.bpjs_tk + p.bpjs_kes bpjs, p.pph21
+              `select p.period, d.name division, p.net_salary + p.allowance salary, p.bpjs_tk + p.bpjs_kes bpjs, p.pph21
                from payroll_months p join divisions d on d.id = p.division_id
                where d.company_id = ? and p.period >= ? and p.period <= ?${f.divisionId ? ' and p.division_id = ?' : ''}
                order by p.period, d.name`,

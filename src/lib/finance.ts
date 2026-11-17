@@ -1086,7 +1086,7 @@ export async function pnlByAccount(d1: D1Database, companyId: number, yearOrFilt
       ? null
       : await d1
           .prepare(
-            `select coalesce(sum(p.net_salary), 0) salary, coalesce(sum(p.bpjs_tk + p.bpjs_kes), 0) bpjs, coalesce(sum(p.pph21), 0) pph21
+            `select coalesce(sum(p.net_salary + p.allowance), 0) salary, coalesce(sum(p.bpjs_tk + p.bpjs_kes), 0) bpjs, coalesce(sum(p.pph21), 0) pph21
              from payroll_months p join divisions d on d.id = p.division_id
              where d.company_id = ? and p.period >= ? and p.period <= ?${f.divisionId ? ' and p.division_id = ?' : ''}`,
           )
@@ -1221,7 +1221,7 @@ export async function balanceSheet(d1: D1Database, companyId: number, asOf: stri
   const cashOut = -(pay.results.find((r) => r.g === 'out')?.cash ?? 0) // paid out, net of refunds
   const payroll = await d1
     .prepare(
-      `select coalesce(sum(p.net_salary), 0) net, coalesce(sum(p.pph21 + p.bpjs_tk + p.bpjs_kes), 0) tax
+      `select coalesce(sum(p.net_salary + p.allowance), 0) net, coalesce(sum(p.pph21 + p.bpjs_tk + p.bpjs_kes), 0) tax
        from payroll_months p join divisions dv on dv.id = p.division_id where dv.company_id = ? and p.period > ? and p.period <= ?`,
     )
     .bind(companyId, o.slice(0, 7), d.slice(0, 7))
@@ -1754,13 +1754,14 @@ export async function readonlyQuery(d1: D1Database, query: string, limit = 500) 
 
 // ------------------------------------------------------------------ payroll (Employee OpEx)
 
-/** Monthly payroll totals per division for a year, plus year totals. Cost = net + BPJS TK + BPJS Kes + PPh 21. */
+/** Monthly payroll totals per division for a year, plus year totals. Cost = salary + allowance + BPJS TK + BPJS Kes + PPh 21. */
 export async function payrollSummary(db: Db, year: number) {
   const rows = await db
     .select({
       period: payrollMonths.period,
       division: divisions.name,
       netSalary: payrollMonths.netSalary,
+      allowance: payrollMonths.allowance,
       bpjsTk: payrollMonths.bpjsTk,
       bpjsKes: payrollMonths.bpjsKes,
       pph21: payrollMonths.pph21,
@@ -1771,17 +1772,18 @@ export async function payrollSummary(db: Db, year: number) {
     .innerJoin(divisions, eq(divisions.id, payrollMonths.divisionId))
     .where(sql`${payrollMonths.period} like ${year + '-%'}`)
     .orderBy(asc(payrollMonths.period), asc(divisions.id))
-  const sum = (k: 'netSalary' | 'bpjsTk' | 'bpjsKes' | 'pph21') => rows.reduce((a, r) => a + r[k], 0)
+  const sum = (k: 'netSalary' | 'allowance' | 'bpjsTk' | 'bpjsKes' | 'pph21') => rows.reduce((a, r) => a + r[k], 0)
   return {
     year,
     totals: {
       netSalary: sum('netSalary'),
+      allowance: sum('allowance'),
       bpjsTk: sum('bpjsTk'),
       bpjsKes: sum('bpjsKes'),
       pph21: sum('pph21'),
-      cost: sum('netSalary') + sum('bpjsTk') + sum('bpjsKes') + sum('pph21'),
+      cost: sum('netSalary') + sum('allowance') + sum('bpjsTk') + sum('bpjsKes') + sum('pph21'),
     },
-    rows: rows.map((r) => ({ ...r, cost: r.netSalary + r.bpjsTk + r.bpjsKes + r.pph21 })),
+    rows: rows.map((r) => ({ ...r, cost: r.netSalary + r.allowance + r.bpjsTk + r.bpjsKes + r.pph21 })),
   }
 }
 
@@ -1793,6 +1795,7 @@ export async function recordPayroll(
     period: string
     divisionId: number
     netSalary: number
+    allowance?: number
     bpjsTk?: number
     bpjsKes?: number
     pph21?: number
@@ -1811,6 +1814,7 @@ export async function recordPayroll(
     period: input.period,
     divisionId: input.divisionId,
     netSalary: Math.round(input.netSalary),
+    allowance: Math.round(input.allowance ?? 0),
     bpjsTk: Math.round(input.bpjsTk ?? 0),
     bpjsKes: Math.round(input.bpjsKes ?? 0),
     pph21: Math.round(input.pph21 ?? 0),
@@ -1824,6 +1828,43 @@ export async function recordPayroll(
     .returning()
   await log(db, actor, 'upsert', 'payroll_months', row.id, values)
   return row
+}
+
+/** The month before a YYYY-MM period. */
+export function previousPeriod(period: string) {
+  const [y, m] = period.split('-').map(Number)
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+}
+
+/**
+ * Starts a month's payroll as a draft copy of the month before (every division), for HR to edit before the owner approves.
+ * Each month keeps its own amounts, so later raises never change past months. Refused if the month already has entries.
+ */
+export async function copyPayrollFromPrevious(db: Db, actor: Actor, period: string) {
+  if (!/^\d{4}-\d{2}$/.test(period)) throw new FinanceError('period must be YYYY-MM')
+  const exists = await db.select({ id: payrollMonths.id }).from(payrollMonths).where(eq(payrollMonths.period, period)).get()
+  if (exists) throw new FinanceError(`${period} already has payroll. Edit it instead.`)
+  const from = previousPeriod(period)
+  const prev = await db.select().from(payrollMonths).where(eq(payrollMonths.period, from)).all()
+  if (prev.length === 0) throw new FinanceError(`no payroll in ${from} to copy`)
+  const out = []
+  for (const p of prev) {
+    const values = {
+      period,
+      divisionId: p.divisionId,
+      netSalary: p.netSalary,
+      allowance: p.allowance,
+      bpjsTk: p.bpjsTk,
+      bpjsKes: p.bpjsKes,
+      pph21: p.pph21,
+      headcount: p.headcount,
+      notes: null,
+    }
+    const [row] = await db.insert(payrollMonths).values(values).returning()
+    await log(db, actor, 'create', 'payroll_months', row.id, { ...values, copiedFrom: from })
+    out.push(row)
+  }
+  return { period, copiedFrom: from, rows: out.length }
 }
 
 /** Approves (locks) or reopens one month's payroll, all divisions together. Owner (BOD) only, enforced by the caller. */
@@ -1859,7 +1900,8 @@ export async function attachDocument(
 ) {
   if (input.bytes.byteLength === 0) throw new FinanceError('file is empty')
   if (input.bytes.byteLength > MAX_DOC_BYTES) throw new FinanceError('file is larger than 15 MB')
-  const table = input.entity === 'transaction' ? transactions : input.entity === 'party' ? parties : projects
+  const table =
+    input.entity === 'transaction' ? transactions : input.entity === 'party' ? parties : input.entity === 'employee' ? employees : projects
   const exists = await db.select({ id: table.id }).from(table).where(eq(table.id, input.entityId)).get()
   if (!exists) throw new FinanceError(`${input.entity} ${input.entityId} not found`)
   const safeName = input.filename.replace(/[^\w.\-]+/g, '_').slice(-80) || 'file'
