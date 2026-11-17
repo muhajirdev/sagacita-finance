@@ -294,12 +294,21 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
   })
 
 export const settleAdvanceFn = createServerFn({ method: 'POST' })
-  .validator(z.object({ advanceId: z.number().int(), spent: z.number().int().min(0), date: z.string().optional(), note: z.string().optional() }))
+  .validator(
+    z.object({
+      advanceId: z.number().int(),
+      lines: z
+        .array(z.object({ description: z.string().optional(), accountId: z.number().int().nullable().optional(), amount: z.number().int().min(0) }))
+        .min(1),
+      date: z.string().optional(),
+      note: z.string().optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const user = await requireUser()
     return settleAdvance(getDb(), user.email, {
       advanceId: data.advanceId,
-      lines: [{ amount: data.spent }],
+      lines: data.lines,
       date: data.date,
       note: data.note,
       createdBy: user.id,

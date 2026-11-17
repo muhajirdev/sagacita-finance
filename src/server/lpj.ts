@@ -52,7 +52,7 @@ export const getLpjSubmissions = createServerFn({ method: 'POST' })
   })
 
 export const settleFromLpjFn = createServerFn({ method: 'POST' })
-  .validator(z.object({ advanceId: z.number().int(), date: z.string().optional() }))
+  .validator(z.object({ advanceId: z.number().int(), date: z.string().optional(), accountIds: z.array(z.number().int().nullable()).optional() }))
   .handler(async ({ data }) => {
     const user = await financeUser()
     return settleFromLpj(getDb(), user.email, { ...data, createdBy: user.id })

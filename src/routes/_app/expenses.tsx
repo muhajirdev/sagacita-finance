@@ -5,7 +5,16 @@ import { z } from 'zod'
 import { Modal, PageHeader, Tabs } from '#/components/ui'
 import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setAccountFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
+import {
+  getProject,
+  getProjects,
+  getReference,
+  recordPaymentFn,
+  recordTransactionFn,
+  setAccountFn,
+  setStatusFn,
+  settleAdvanceFn,
+} from '#/server/fns'
 import { getExpenses } from '#/server/pages'
 import { getLpjSubmissions, lpjLinkFn, settleFromLpjFn } from '#/server/lpj'
 import type { LpjItem } from '#/lib/lpj'
@@ -24,14 +33,23 @@ const TABS = [
 type Tab = (typeof TABS)[number][0]
 
 export const Route = createFileRoute('/_app/expenses')({
-  validateSearch: filterSearch.extend({ tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional() }),
+  validateSearch: filterSearch.extend({
+    tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional(),
+  }),
   loaderDeps: ({ search }) => pickFilters(search),
   loader: async ({ deps }) => {
     const [rows, projects, ref] = await Promise.all([getExpenses({ data: deps }), getProjects(), getReference()])
     // LPJs employees submitted through their link, for paid advances not settled yet.
     const advanceIds = rows.filter((t) => t.kind === 'cash_advance' && t.status === 'approved').map((t) => t.id)
     const lpj = await getLpjSubmissions({ data: { advanceIds } })
-    return { rows, projects, vendors: ref.vendors, accounts: ref.accounts, ref, lpj }
+    return {
+      rows,
+      projects,
+      vendors: ref.vendors,
+      accounts: ref.accounts,
+      ref,
+      lpj,
+    }
   },
   component: Expenses,
 })
@@ -54,6 +72,7 @@ const STAGE_PILL = {
 function Expenses() {
   const { rows, projects, vendors, accounts, ref, lpj } = Route.useLoaderData()
   const [review, setReview] = useState<TransactionRow | null>(null)
+  const [settling, setSettling] = useState<TransactionRow | null>(null)
   const search = Route.useSearch()
   const { tab = 'all' } = search
   const navigate = Route.useNavigate()
@@ -67,6 +86,7 @@ function Expenses() {
       ui.error(e)
     }
   }
+  const costAccounts = accounts.filter((a) => a.group === 'cost_of_service' || a.group === 'operating_expense')
   const list = rows.filter((t) => (tab === 'all' ? t.status !== 'void' : stage(t) === tab)).sort((a, b) => b.total - a.total)
 
   return (
@@ -106,7 +126,13 @@ function Expenses() {
                 <tr
                   key={t.id}
                   className="cursor-pointer"
-                  onClick={() => t.project_code && navigate({ to: '/projects/$code', params: { code: t.project_code } })}
+                  onClick={() =>
+                    t.project_code &&
+                    navigate({
+                      to: '/projects/$code',
+                      params: { code: t.project_code },
+                    })
+                  }
                 >
                   <td className="td whitespace-nowrap">
                     {t.project_code ?? 'Company'}
@@ -118,12 +144,22 @@ function Expenses() {
                     <div className="text-[12px] text-muted">{KIND_LABEL[t.kind]}</div>
                   </td>
                   <td className="td" onClick={(e) => e.stopPropagation()}>
-                    {t.kind !== 'tax_payment' && (
+                    {t.kind === 'cash_advance' && <span className="text-[12px] text-muted">COA on the LPJ</span>}
+                    {t.kind !== 'tax_payment' && t.kind !== 'cash_advance' && (
                       <select
                         className={`input w-44 py-1 text-[12px] ${t.account_id ? '' : 'text-muted'}`}
                         value={t.account_id ?? ''}
                         title={t.account ?? 'Pick the chart of accounts line'}
-                        onChange={(e) => act(() => setAccountFn({ data: { ids: [t.id], accountId: e.target.value ? Number(e.target.value) : null } }))}
+                        onChange={(e) =>
+                          act(() =>
+                            setAccountFn({
+                              data: {
+                                ids: [t.id],
+                                accountId: e.target.value ? Number(e.target.value) : null,
+                              },
+                            }),
+                          )
+                        }
                       >
                         <option value="">Pick COA…</option>
                         {accounts.map((a) => (
@@ -174,9 +210,15 @@ function Expenses() {
                   </td>
                   <td className="td">{t.requested_by ?? '—'}</td>
                   <td className="td">
-                    {lpj[t.id]?.submittedAt && t.status === 'approved' ? <span className="pill-warn">LPJ submitted, waiting review</span> : STAGE_PILL[s]}
+                    {lpj[t.id]?.submittedAt && t.status === 'approved' ? (
+                      <span className="pill-warn">LPJ submitted, waiting review</span>
+                    ) : (
+                      STAGE_PILL[s]
+                    )}
                     {t.lpj_due && (
-                      <div className={`mt-0.5 text-[12px] ${t.lpj_due < new Date().toISOString().slice(0, 10) ? 'text-bad' : 'text-muted'}`}>
+                      <div
+                        className={`mt-0.5 text-[12px] ${t.lpj_due < new Date().toISOString().slice(0, 10) ? 'text-bad' : 'text-muted'}`}
+                      >
                         LPJ due {t.lpj_due}
                       </div>
                     )}
@@ -202,11 +244,25 @@ function Expenses() {
                                 defaultValue: String(Math.abs(t.outstanding)),
                                 hint: `Outstanding ${rp(t.outstanding)}`,
                               },
-                              { name: 'date', label: 'Payment date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                              {
+                                name: 'date',
+                                label: 'Payment date',
+                                type: 'date',
+                                defaultValue: new Date().toISOString().slice(0, 10),
+                              },
                             ],
                             { submitLabel: 'Record payment' },
                           )
-                          if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v.amount), date: v.date } }))
+                          if (v)
+                            act(() =>
+                              recordPaymentFn({
+                                data: {
+                                  transactionId: t.id,
+                                  amount: Number(v.amount),
+                                  date: v.date,
+                                },
+                              }),
+                            )
                         }}
                       >
                         Pay
@@ -223,12 +279,24 @@ function Expenses() {
                         title="A secret link the advance holder opens on their phone to fill the LPJ with receipts. No login."
                         onClick={() =>
                           act(async () => {
-                            const link = await lpjLinkFn({ data: { advanceId: t.id } })
+                            const link = await lpjLinkFn({
+                              data: { advanceId: t.id },
+                            })
                             try {
                               await navigator.clipboard.writeText(link.url)
                               ui.toast('LPJ link copied. Send it to ' + (link.person ?? 'the advance holder'))
                             } catch {
-                              await ui.prompt('LPJ link', [{ name: 'url', label: 'Copy this link', defaultValue: link.url }], { submitLabel: 'Done' })
+                              await ui.prompt(
+                                'LPJ link',
+                                [
+                                  {
+                                    name: 'url',
+                                    label: 'Copy this link',
+                                    defaultValue: link.url,
+                                  },
+                                ],
+                                { submitLabel: 'Done' },
+                              )
                             }
                           })
                         }
@@ -237,27 +305,7 @@ function Expenses() {
                       </button>
                     )}
                     {s === 'paid' && t.kind === 'cash_advance' && !lpj[t.id]?.submittedAt && (
-                      <button
-                        className="btn-ghost mr-1"
-                        onClick={async () => {
-                          const v = await ui.prompt(
-                            `LPJ for ${t.number ?? 'cash advance'}`,
-                            [
-                              {
-                                name: 'spent',
-                                label: 'Actually spent (IDR)',
-                                type: 'number',
-                                min: 0,
-                                defaultValue: String(t.total),
-                                hint: `Advanced ${rp(t.total)}. More = the rest is paid to them, less = they refund the difference. Attach the receipts with "Attach".`,
-                              },
-                              { name: 'date', label: 'LPJ date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
-                            ],
-                            { submitLabel: 'Submit LPJ' },
-                          )
-                          if (v) act(() => settleAdvanceFn({ data: { advanceId: t.id, spent: Number(v.spent), date: v.date } }))
-                        }}
-                      >
+                      <button className="btn-ghost mr-1" onClick={() => setSettling(t)}>
                         Submit LPJ
                       </button>
                     )}
@@ -301,14 +349,33 @@ function Expenses() {
           }}
         />
       )}
+      {settling && (
+        <SettleForm
+          advance={settling}
+          accounts={costAccounts}
+          onClose={() => setSettling(null)}
+          onSettle={(lines, date) =>
+            act(async () => {
+              await settleAdvanceFn({
+                data: { advanceId: settling.id, lines, date },
+              })
+              setSettling(null)
+              ui.toast('LPJ settled')
+            })
+          }
+        />
+      )}
       {review && lpj[review.id] && (
         <LpjReview
           advance={review}
           sub={lpj[review.id]}
           onClose={() => setReview(null)}
-          onSettle={(date) =>
+          accounts={costAccounts}
+          onSettle={(date, accountIds) =>
             act(async () => {
-              await settleFromLpjFn({ data: { advanceId: review.id, date } })
+              await settleFromLpjFn({
+                data: { advanceId: review.id, date, accountIds },
+              })
               setReview(null)
               ui.toast('LPJ settled')
             })
@@ -323,15 +390,23 @@ function Expenses() {
 function LpjReview({
   advance,
   sub,
+  accounts,
   onClose,
   onSettle,
 }: {
   advance: TransactionRow
-  sub: { submittedAt: string | null; items: LpjItem[]; spent: number; note: string | null }
+  sub: {
+    submittedAt: string | null
+    items: LpjItem[]
+    spent: number
+    note: string | null
+  }
+  accounts: Account[]
   onClose: () => void
-  onSettle: (date: string) => void
+  onSettle: (date: string, accountIds: (number | null)[]) => void
 }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [coa, setCoa] = useState<(number | null)[]>(() => sub.items.map(() => null))
   const diff = sub.spent - advance.total
   return (
     <Modal title={`LPJ ${advance.number ?? ''} · ${advance.requested_by ?? advance.party ?? ''}`} onClose={onClose} wide>
@@ -342,6 +417,7 @@ function LpjReview({
             <tr>
               <th className="th">Date</th>
               <th className="th">Item</th>
+              <th className="th">COA</th>
               <th className="th">Receipt</th>
               <th className="th num">Amount</th>
             </tr>
@@ -351,6 +427,9 @@ function LpjReview({
               <tr key={n}>
                 <td className="td whitespace-nowrap">{i.date}</td>
                 <td className="td">{i.description}</td>
+                <td className="td">
+                  <CoaSelect accounts={accounts} value={coa[n]} onChange={(v) => setCoa((c) => c.map((x, k) => (k === n ? v : x)))} />
+                </td>
                 <td className="td">
                   {i.documentId ? (
                     <a className="text-accent" href={`/files/${i.documentId}`} target="_blank" rel="noreferrer">
@@ -386,11 +465,139 @@ function LpjReview({
             LPJ date
             <input className="input mt-1" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
-          <button className="btn" onClick={() => onSettle(date)}>
+          <button className="btn" onClick={() => (coa.some((c) => !c) ? ui.toast('Pick the COA for every item', 'warn') : onSettle(date, coa))}>
             Approve and settle
           </button>
         </div>
       </div>
+    </Modal>
+  )
+}
+
+type Account = { id: number; code: string; name: string; group: string }
+
+function CoaSelect({ accounts, value, onChange }: { accounts: Account[]; value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <select className="input py-1.5" value={value ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
+      <option value="">Pick COA</option>
+      {accounts.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.code} {a.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** Finance settles a paid cash advance line by line: each line has its own description, COA and amount. */
+function SettleForm({
+  advance,
+  accounts,
+  onClose,
+  onSettle,
+}: {
+  advance: TransactionRow
+  accounts: Account[]
+  onClose: () => void
+  onSettle: (lines: { description?: string; accountId: number | null; amount: number }[], date: string) => void
+}) {
+  type Line = { description: string; accountId: number | null; amount: string }
+  const blank = (): Line => ({ description: '', accountId: null, amount: '' })
+  const [lines, setLines] = useState<Line[]>([blank()])
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const set = (n: number, p: Partial<Line>) => setLines((ls) => ls.map((l, k) => (k === n ? { ...l, ...p } : l)))
+  const spent = lines.reduce((a, l) => a + (Number(l.amount) || 0), 0)
+  const diff = spent - advance.total
+  return (
+    <Modal title={`Settlement / LPJ ${advance.number ?? ''} · ${advance.requested_by ?? advance.party ?? ''}`} onClose={onClose} wide>
+      <form
+        className="space-y-4 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const out = lines
+            .filter((l) => Number(l.amount) > 0)
+            .map((l) => ({
+              description: l.description.trim() || undefined,
+              accountId: l.accountId,
+              amount: Math.round(Number(l.amount)),
+            }))
+          if (!out.length) return ui.toast('Add at least one line with an amount', 'warn')
+          if (out.some((l) => !l.accountId)) return ui.toast('Pick the COA for every line', 'warn')
+          onSettle(out, date)
+        }}
+      >
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="th">Description</th>
+              <th className="th">COA</th>
+              <th className="th num">Amount (IDR)</th>
+              <th className="th" />
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, n) => (
+              <tr key={n}>
+                <td className="td">
+                  <input
+                    className="input py-1.5"
+                    value={l.description}
+                    placeholder="e.g. Konsumsi meeting klien"
+                    onChange={(e) => set(n, { description: e.target.value })}
+                  />
+                </td>
+                <td className="td">
+                  <CoaSelect accounts={accounts} value={l.accountId} onChange={(v) => set(n, { accountId: v })} />
+                </td>
+                <td className="td">
+                  <input
+                    className="input py-1.5 text-right"
+                    type="number"
+                    min="0"
+                    value={l.amount}
+                    onChange={(e) => set(n, { amount: e.target.value })}
+                  />
+                </td>
+                <td className="td">
+                  {lines.length > 1 && (
+                    <button type="button" className="btn-ghost" onClick={() => setLines((ls) => ls.filter((_, k) => k !== n))}>
+                      Remove
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button type="button" className="btn-ghost" onClick={() => setLines((ls) => [...ls, blank()])}>
+          + Add line
+        </button>
+        <dl className="space-y-1">
+          <div className="flex justify-between">
+            <dt className="text-muted">Advanced</dt>
+            <dd className="num">{rp(advance.total)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted">Actually spent</dt>
+            <dd className="num">{rp(spent)}</dd>
+          </div>
+          <div className="flex justify-between font-medium">
+            <dt>{diff > 0 ? 'Still to pay them' : diff < 0 ? 'They refund' : 'Difference'}</dt>
+            <dd className="num">{rp(Math.abs(diff))}</dd>
+          </div>
+        </dl>
+        <p className="text-muted">Attach the receipts on the advance with "Attach".</p>
+        <div className="flex items-end justify-end gap-2">
+          <label className="text-[12px] text-muted">
+            LPJ date
+            <input className="input mt-1" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <button type="button" className="btn-ghost py-2" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn">Settle</button>
+        </div>
+      </form>
     </Modal>
   )
 }
@@ -410,7 +617,12 @@ function ExpenseForm({
 }: {
   projects: { id: number; code: string; client: string }[]
   accounts: { id: number; code: string; name: string; group: string }[]
-  vendors: { id: number; name: string; bankName?: string | null; bankAccount?: string | null }[]
+  vendors: {
+    id: number
+    name: string
+    bankName?: string | null
+    bankAccount?: string | null
+  }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -437,7 +649,7 @@ function ExpenseForm({
                 projectId,
                 budgetLineId: Number(s('budgetLineId')),
                 partyName: s('partyName'),
-                accountId: s('accountId') ? Number(s('accountId')) : null,
+                accountId: kind !== 'cash_advance' && s('accountId') ? Number(s('accountId')) : null,
                 description: s('description'),
                 number: s('number'),
                 dueDate: s('dueDate'),
@@ -459,7 +671,10 @@ function ExpenseForm({
           <Select
             value={projectCode}
             onChange={setProjectCode}
-            options={projects.map((p) => ({ value: p.code, label: `${p.code} — ${p.client}` }))}
+            options={projects.map((p) => ({
+              value: p.code,
+              label: `${p.code} — ${p.client}`,
+            }))}
           />
         </label>
         <label className="field">
@@ -469,7 +684,10 @@ function ExpenseForm({
             name="budgetLineId"
             required
             placeholder="No SOW items"
-            options={lines.map((l) => ({ value: String(l.id), label: `${l.name} (${rp(l.ceiling - l.actual)} left)` }))}
+            options={lines.map((l) => ({
+              value: String(l.id),
+              label: `${l.name} (${rp(l.ceiling - l.actual)} left)`,
+            }))}
           />
         </label>
         <label className="field">
@@ -484,16 +702,21 @@ function ExpenseForm({
             <input className="input" name="partyName" required />
           )}
         </label>
-        <label className="field sm:col-span-2">
-          COA (chart of accounts)
-          <Select
-            name="accountId"
-            placeholder="Pick the COA line"
-            options={accounts
-              .filter((a) => a.group === 'cost_of_service' || a.group === 'operating_expense')
-              .map((a) => ({ value: String(a.id), label: `${a.code} ${a.name}` }))}
-          />
-        </label>
+        {kind !== 'cash_advance' && (
+          <label className="field sm:col-span-2">
+            COA (chart of accounts)
+            <Select
+              name="accountId"
+              placeholder="Pick the COA line"
+              options={accounts
+                .filter((a) => a.group === 'cost_of_service' || a.group === 'operating_expense')
+                .map((a) => ({
+                  value: String(a.id),
+                  label: `${a.code} ${a.name}`,
+                }))}
+            />
+          </label>
+        )}
         <label className="field sm:col-span-2">
           Purpose / description
           <input className="input" name="description" />

@@ -114,7 +114,7 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                         ],
                         { submitLabel: 'Submit LPJ' },
                       )
-                      if (v) act(() => settleAdvanceFn({ data: { advanceId: t.id, spent: Number(v.spent), date: v.date } }))
+                      if (v) act(() => settleAdvanceFn({ data: { advanceId: t.id, lines: [{ amount: Number(v.spent) }], date: v.date } }))
                     }}
                   >
                     Submit LPJ
