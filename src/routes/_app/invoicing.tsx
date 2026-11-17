@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Modal, PageHeader, Tabs, TypeBadge, fdate } from '#/components/ui'
 import type { TransactionRow } from '#/lib/finance'
 import { rp } from '#/lib/format'
-import { recordPaymentFn, recordTransactionFn } from '#/server/fns'
+import { recordPaymentFn, recordTransactionFn, inputInvoiceTaxFn } from '#/server/fns'
 import { getInvoicing, updateTransactionFn } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 import { getReference } from '#/server/fns'
@@ -37,6 +37,7 @@ const termsOf = (t: TransactionRow) => {
 
 function InvoiceStatus({ t }: { t: TransactionRow }) {
   if (t.status === 'void') return <span className="pill-neutral">Void</span>
+  if (t.status === 'draft') return <span className="pill-warn">Waiting tax input</span>
   if (t.outstanding <= 0) return <span className="pill-good">Paid</span>
   if (t.overdue) return <span className="pill-bad">Overdue</span>
   if (t.paid > 0) return <span className="pill-warn">Part paid</span>
@@ -147,6 +148,7 @@ function Invoicing() {
                   <td className="td">
                     {i.client}
                     <div className="text-[12px] text-muted">{i.project_name}</div>
+                    {i.note && <div className="text-[12px] text-ink-2">Note: {i.note}</div>}
                   </td>
                   <td className="td num">{rp(i.dpp)}</td>
                   <td className="td num">{rp(tab === 'paid' ? i.paid : i.outstanding)}</td>
@@ -162,6 +164,35 @@ function Invoicing() {
                         {i.paid === 0 && (
                           <button className="btn-ghost mr-1" onClick={() => setForm(i)}>
                             Edit
+                          </button>
+                        )}
+                        {i.paid === 0 && (
+                          <button
+                            className={i.status === 'draft' ? 'btn mr-1' : 'btn-ghost mr-1'}
+                            onClick={async () => {
+                              const v = await ui.prompt(
+                                `Tax input for ${i.number ?? 'invoice'}`,
+                                [
+                                  { name: 'billing', label: 'Billing (IDR, before tax)', type: 'number', min: 1, defaultValue: String(i.dpp) },
+                                  { name: 'tax', label: 'Tax / PPN (IDR)', type: 'number', min: 0, defaultValue: String(i.ppn) },
+                                  { name: 'note', label: 'Note', required: false, defaultValue: i.note ?? '' },
+                                ],
+                                {
+                                  message: `Account receivable = Billing + Tax${i.pph > 0 ? ` − PPh withheld ${rp(i.pph)}` : ''}.`,
+                                  submitLabel: 'Save and mark sent',
+                                },
+                              )
+                              if (!v) return
+                              if (
+                                await ui.run(
+                                  () => inputInvoiceTaxFn({ data: { id: i.id, billing: Number(v.billing), tax: Number(v.tax), note: v.note } }),
+                                  'Saved. Account receivable updated',
+                                )
+                              )
+                                await router.invalidate()
+                            }}
+                          >
+                            Tax input
                           </button>
                         )}
                         <button
@@ -270,7 +301,7 @@ function InvoiceForm({
             if (invoice) await updateTransactionFn({ data: { id: invoice.id, ...common } })
             else
               await recordTransactionFn({
-                data: { kind: 'client_invoice', projectId: Number(f.get('projectId')), status: 'approved', ...common },
+                data: { kind: 'client_invoice', projectId: Number(f.get('projectId')), status: 'draft', ...common },
               })
             onSaved()
           } catch (e) {

@@ -113,6 +113,13 @@
       "when": 1794905832998,
       "tag": "0015_project_contract_value",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794906288054,
+      "tag": "0016_invoice_tax_note",
+      "breakpoints": true
     }
   ]
 }

@@ -54,6 +54,7 @@ import {
   taxDue,
   listAccounts,
   setTransactionAccount,
+  inputInvoiceTax,
   pnlByAccount,
   createCompany,
   updateCompany,
@@ -345,6 +346,23 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, transactionIds, account }) => safe(() => setTransactionAccount(db, actor, transactionIds, account)),
+  )
+
+  server.registerTool(
+    'input_invoice_tax',
+    {
+      description:
+        "Finance tax's step after an invoice is submitted: set Billing (DPP) and Tax (PPN) and an optional note. " +
+        'Account receivable = billing + tax (minus PPh the client withholds). Marks the invoice as sent (approved). Not allowed once it has payments.',
+      inputSchema: {
+        actor: actorField,
+        transactionId: z.number().int(),
+        billing: z.number().positive(),
+        tax: z.number().nonnegative(),
+        note: z.string().optional(),
+      },
+    },
+    async ({ actor, transactionId, ...input }) => safe(() => inputInvoiceTax(db, actor, transactionId, input)),
   )
 
   server.registerTool(
