@@ -48,6 +48,7 @@ import {
   listDocuments,
   payrollSummary,
   recordPayroll,
+  copyPayrollFromPrevious,
   updateTransaction,
   settleAdvance,
   recordTaxPayment,
@@ -107,7 +108,7 @@ Tables:
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
   documents     files in R2: entity (transaction|party|project), entity_id, kind, filename, content_type, size. URL = <app>/files/<id>
   activity_log  audit log, who changed what: at, actor, action, entity, entity_id, data (json), source (web|mcp|import), batch_id
-  payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount, status (draft | approved by the BOD on the web; approved months are locked). Cost = sum of the four.
+  payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, allowance (tunjangan), bpjs_tk, bpjs_kes (company share), pph21, headcount, status (draft | approved by the owner on the web; approved months are locked). Cost = sum of the five.
   (users and employees are not readable here: HR data)
 
 Rules:
@@ -800,7 +801,7 @@ function createServer(env: Env, appUrl: string) {
     'payroll_summary',
     {
       description:
-        'Employee OpEx for a year: monthly payroll totals per division (net salary, BPJS TK/Kes, PPh 21, cost) and year totals. Salaries are sensitive: share only with the owner or HR.',
+        'Employee OpEx for a year: monthly payroll totals per division (salary, allowance, BPJS TK/Kes, PPh 21, cost) and year totals. Salaries are sensitive: share only with the owner or HR.',
       inputSchema: { year: z.number().int().optional() },
     },
     async ({ year }) => safe(() => payrollSummary(db, year ?? new Date().getFullYear())),
@@ -810,12 +811,13 @@ function createServer(env: Env, appUrl: string) {
     'record_payroll',
     {
       description:
-        "Save one month's payroll totals for one division (from HR's payroll Excel). Saving the same month + division again replaces it. Months the BOD has approved are locked (status approved) and refuse changes until the owner reopens them on the web. divisionId from list_reference.",
+        "Save one month's payroll totals for one division (from HR's payroll Excel). Saving the same month + division again replaces it. Months the owner has approved are locked (status approved) and refuse changes until the owner reopens them on the web. divisionId from list_reference.",
       inputSchema: {
         actor: actorField,
         period: z.string().describe('YYYY-MM'),
         divisionId: z.number().int(),
         netSalary: z.number().nonnegative(),
+        allowance: z.number().nonnegative().optional().describe('Tunjangan total'),
         bpjsTk: z.number().nonnegative().optional(),
         bpjsKes: z.number().nonnegative().optional(),
         pph21: z.number().nonnegative().optional(),
@@ -824,6 +826,16 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => recordPayroll(db, actor, input)),
+  )
+
+  server.registerTool(
+    'copy_payroll_from_previous',
+    {
+      description:
+        "Start a month's payroll as a draft copy of the month before (all divisions), for HR to edit with record_payroll. Refused if the month already has payroll. Confirm first.",
+      inputSchema: { actor: actorField, period: z.string().describe('YYYY-MM, the new month') },
+    },
+    async ({ actor, period }) => safe(() => copyPayrollFromPrevious(db, actor, period)),
   )
 
   server.registerTool(
