@@ -32,41 +32,53 @@ export const Route = createFileRoute('/_app')({
     const role = user.role as Role
     const page = NAV.filter((n) => n.to !== '/').find((n) => location.pathname === n.to || location.pathname.startsWith(n.to + '/'))
     if (page && !(page.roles as readonly Role[]).includes(role)) throw redirect({ to: '/' })
-    if (location.pathname.startsWith('/projects') && !['owner', 'finance', 'admin'].includes(role)) throw redirect({ to: '/' })
+    if (location.pathname.startsWith('/projects') && !['owner', 'finance', 'admin', 'team'].includes(role)) throw redirect({ to: '/' })
     return { user }
   },
   component: Layout,
 })
 
-type Role = 'owner' | 'finance' | 'admin' | 'hr'
+type Role = 'owner' | 'finance' | 'admin' | 'team' | 'hr'
 
 /** Sidebar grouping as Tanya asked (2026-11-17): Account, Project OpEx, Internal OpEx, Tax, Reporting, HR, then Admin. */
-const NAV: readonly NavItem[] = [
-  { section: 'Account', to: '/clients', label: 'Client Data', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Account', to: '/projects', label: 'Projects', icon: IconFolder, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Account', to: '/budget', label: 'Budget Control', icon: IconGauge, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Account', to: '/expenses', search: { tab: 'settled' }, label: 'Settlement / LPJ', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Project OpEx', to: '/expenses', label: 'Expenses', icon: IconWallet, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Project OpEx', to: '/invoicing', label: 'Invoices', icon: IconReceipt, roles: ['owner', 'finance'] },
-  { section: 'Project OpEx', to: '/vendors', label: 'Vendor List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Project OpEx', to: '/payables', label: 'Payment run', icon: IconCalendar, roles: ['owner', 'finance'] },
-  { section: 'Project OpEx', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Internal OpEx', to: '/compopex', label: 'Internal OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
-  { section: 'Tax', to: '/tax', label: 'Tax', icon: IconReceipt, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/', label: 'Dashboard', icon: IconHome, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/performance', label: 'Performance', icon: IconChart, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/cashflow', label: 'Cash Flow', icon: IconWave, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/pnl', label: 'P&L', icon: IconChart, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/balance-sheet', label: 'Balance Sheet', icon: IconChart, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/ledger', label: 'Buku Besar', icon: IconList, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/transactions', label: 'All transactions', icon: IconList, roles: ['owner', 'finance'] },
-  { section: 'HR', to: '/employees', label: 'Employees', icon: IconPeople, roles: ['owner', 'hr'] },
-  { section: 'HR', to: '/empopex', label: 'Payroll', icon: IconWallet, roles: ['owner', 'hr'] },
-  { section: 'HR', to: '/medical', label: 'Medical', icon: IconCheck, roles: ['owner', 'hr'] },
-  { section: 'Admin', to: '/companies', label: 'PTs & Divisions', icon: IconBuilding, roles: ['owner', 'finance'] },
-  { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
-  { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory, roles: ['owner'] },
+/** Who sees which sidebar section (Muajir, 2026-11-17). Owner sees everything. */
+const SECTION_ROLES: Record<string, readonly Role[]> = {
+  Account: ['owner', 'finance', 'admin', 'team'],
+  'Project OpEx': ['owner', 'finance', 'admin', 'team'],
+  'Internal OpEx': ['owner', 'finance', 'admin'],
+  Tax: ['owner', 'finance'],
+  Reporting: ['owner'],
+  HR: ['owner', 'hr'],
+  Admin: ['owner'],
+}
+
+const NAV_ITEMS: readonly Omit<NavItem, 'roles'>[] = [
+  { section: 'Account', to: '/clients', label: 'Client Data', icon: IconContacts },
+  { section: 'Account', to: '/projects', label: 'Projects', icon: IconFolder },
+  { section: 'Account', to: '/budget', label: 'Budget Control', icon: IconGauge },
+  { section: 'Account', to: '/expenses', search: { tab: 'settled' }, label: 'Settlement / LPJ', icon: IconCheck },
+  { section: 'Project OpEx', to: '/expenses', label: 'Expenses', icon: IconWallet },
+  { section: 'Project OpEx', to: '/invoicing', label: 'Invoices', icon: IconReceipt },
+  { section: 'Project OpEx', to: '/vendors', label: 'Vendor List', icon: IconContacts },
+  { section: 'Project OpEx', to: '/payables', label: 'Payment run', icon: IconCalendar },
+  { section: 'Project OpEx', to: '/approvals', label: 'Approvals', icon: IconCheck },
+  { section: 'Internal OpEx', to: '/compopex', label: 'Internal OpEx', icon: IconBuilding },
+  { section: 'Tax', to: '/tax', label: 'Tax', icon: IconReceipt },
+  { section: 'Reporting', to: '/', label: 'Dashboard', icon: IconHome },
+  { section: 'Reporting', to: '/performance', label: 'Performance', icon: IconChart },
+  { section: 'Reporting', to: '/cashflow', label: 'Cash Flow', icon: IconWave },
+  { section: 'Reporting', to: '/pnl', label: 'P&L', icon: IconChart },
+  { section: 'Reporting', to: '/balance-sheet', label: 'Balance Sheet', icon: IconChart },
+  { section: 'Reporting', to: '/ledger', label: 'Buku Besar', icon: IconList },
+  { section: 'Reporting', to: '/transactions', label: 'All transactions', icon: IconList },
+  { section: 'HR', to: '/employees', label: 'Employees', icon: IconPeople },
+  { section: 'HR', to: '/empopex', label: 'Payroll', icon: IconWallet },
+  { section: 'HR', to: '/medical', label: 'Medical', icon: IconCheck },
+  { section: 'Admin', to: '/companies', label: 'PTs & Divisions', icon: IconBuilding },
+  { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey },
+  { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory },
 ]
+const NAV: readonly NavItem[] = NAV_ITEMS.map((n) => ({ ...n, roles: SECTION_ROLES[n.section] }))
 
 type NavItem = {
   section: string

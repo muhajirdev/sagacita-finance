@@ -14,7 +14,7 @@ async function financeUser() {
   const id = await readSession(getCookie(SESSION_COOKIE), env.SESSION_SECRET)
   const user = id ? await getDb().select().from(users).where(eq(users.id, id)).get() : null
   if (!user) throw new Error('Not signed in')
-  if (!['owner', 'finance', 'admin'].includes(user.role)) throw new Error("You don't have access to this section")
+  if (!['owner', 'finance', 'admin', 'team'].includes(user.role)) throw new Error("You don't have access to this section")
   return user
 }
 

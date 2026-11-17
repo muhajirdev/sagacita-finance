@@ -25,7 +25,7 @@ const updatedAt = () =>
 
 // ---------------------------------------------------------------- users
 
-export const USER_ROLES = ['owner', 'finance', 'admin', 'hr'] as const
+export const USER_ROLES = ['owner', 'finance', 'admin', 'team', 'hr'] as const
 
 export const users = sqliteTable('users', {
   id: id(),

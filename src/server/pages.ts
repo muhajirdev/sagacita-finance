@@ -73,7 +73,7 @@ export const updateProjectFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data: { id, ...input } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     return updateProject(getDb(), user.email, id, input)
   })
 
@@ -89,7 +89,7 @@ export const updateBudgetLineFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data: { id, delete: del, ...input } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     return del ? deleteBudgetLine(getDb(), user.email, id) : updateBudgetLine(getDb(), user.email, id, input)
   })
 
@@ -98,7 +98,7 @@ export const updateBudgetLineFn = createServerFn({ method: 'POST' })
 export const getInvoicing = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner', 'finance', 'admin', 'team')
     const f = toListFilter(data)
     const [invoices, ps, own] = await Promise.all([
       listTransactions(env.DB, { ...f, direction: 'in', limit: 2000 }),
@@ -113,7 +113,7 @@ export const getInvoicing = createServerFn()
 export const getExpenses = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance', 'admin')
+    await requireRole('owner', 'finance', 'admin', 'team')
     return listTransactions(env.DB, { ...toListFilter(data), direction: 'out', limit: 2000 })
   })
 
@@ -136,7 +136,7 @@ export const updateTransactionFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data: { id, ...input } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     return updateTransaction(getDb(), user.email, id, input)
   })
 
@@ -145,7 +145,7 @@ export const updateTransactionFn = createServerFn({ method: 'POST' })
 export const getPerformance = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     const f = toListFilter(data)
     const db = getDb()
     const ps = await listProjects(db, f)
@@ -191,7 +191,7 @@ export const getPerformance = createServerFn()
 export const getCashflow = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner')
     const d1 = env.DB
     const f = toListFilter(data)
     // Payments joined to their transaction, so division / client / project filters apply.
@@ -417,7 +417,7 @@ export const saveEmployeeFn = createServerFn({ method: 'POST' })
 export const getCompanyOpex = createServerFn()
   .validator(yearSchema)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner', 'finance', 'admin')
     const year = data.year ?? new Date().getFullYear()
     const db = getDb()
     const budgets = await db.select().from(opexBudgets).where(eq(opexBudgets.fiscalYear, year)).orderBy(asc(opexBudgets.sortOrder))
@@ -446,14 +446,14 @@ export const getCompanyOpex = createServerFn()
 export const setOpexBudgetFn = createServerFn({ method: 'POST' })
   .validator(z.object({ category: z.string().min(1), year: z.number().int(), annualBudget: z.number().nonnegative() }))
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner', 'finance', 'admin')
     return setOpexBudget(getDb(), user.email, data)
   })
 
 // ------------------------------------------------------------ clients
 
 export const getClients = createServerFn().handler(async () => {
-  await requireRole('owner', 'finance', 'admin')
+  await requireRole('owner', 'finance', 'admin', 'team')
   const db = getDb()
   const counts = await db
     .select({ clientId: projects.clientId, n: sql<number>`count(*)` })
@@ -476,7 +476,7 @@ const clientFields = z.object({
 export const addClientFn = createServerFn({ method: 'POST' })
   .validator(clientFields)
   .handler(async ({ data: { name, ...details } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     const db = getDb()
     const party = await ensureParty(db, user.email, 'client', name)
     if (!details.code && !party.code) details.code = suggestClientCode(party.name)
@@ -486,14 +486,14 @@ export const addClientFn = createServerFn({ method: 'POST' })
 export const updateClientFn = createServerFn({ method: 'POST' })
   .validator(clientFields.extend({ id: z.number().int() }))
   .handler(async ({ data: { id, ...details } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     return updateParty(getDb(), user.email, id, details)
   })
 
 // ------------------------------------------------------------ vendors
 
 export const getVendors = createServerFn().handler(async () => {
-  await requireRole('owner', 'finance', 'admin')
+  await requireRole('owner', 'finance', 'admin', 'team')
   const db = getDb()
   const counts = await db
     .select({ partyId: transactions.partyId, n: sql<number>`count(*)` })
@@ -520,7 +520,7 @@ const vendorFields = z.object({
 export const addVendorFn = createServerFn({ method: 'POST' })
   .validator(vendorFields)
   .handler(async ({ data: { name, ...details } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     const db = getDb()
     const party = await ensureParty(db, user.email, 'vendor', name)
     return Object.values(details).some((v) => v) ? updateParty(db, user.email, party.id, details) : party
@@ -529,7 +529,7 @@ export const addVendorFn = createServerFn({ method: 'POST' })
 export const updateVendorFn = createServerFn({ method: 'POST' })
   .validator(vendorFields.extend({ id: z.number().int() }))
   .handler(async ({ data: { id, ...details } }) => {
-    const user = await requireRole('owner', 'finance', 'admin')
+    const user = await requireRole('owner', 'finance', 'admin', 'team')
     return updateParty(getDb(), user.email, id, details)
   })
 
@@ -606,7 +606,7 @@ export const getActivity = createServerFn()
 // ---------------------------------------------------------------- companies (PTs) and divisions
 
 export const getCompanies = createServerFn().handler(async () => {
-  await requireRole('owner', 'finance')
+  await requireRole('owner')
   const db = getDb()
   const used = await db
     .select({ divisionId: projects.divisionId, n: sql<number>`count(*)` })
@@ -622,28 +622,28 @@ const companyFields = z.object({ name: z.string().min(1), code: z.string().nulla
 export const addCompanyFn = createServerFn({ method: 'POST' })
   .validator(companyFields)
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     return createCompany(getDb(), user.email, data)
   })
 
 export const updateCompanyFn = createServerFn({ method: 'POST' })
   .validator(companyFields.extend({ id: z.number().int() }))
   .handler(async ({ data: { id, ...rest } }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     return updateCompany(getDb(), user.email, id, rest)
   })
 
 export const addDivisionFn = createServerFn({ method: 'POST' })
   .validator(z.object({ companyId: z.number().int(), name: z.string().min(1) }))
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     return createDivision(getDb(), user.email, data)
   })
 
 export const renameDivisionFn = createServerFn({ method: 'POST' })
   .validator(z.object({ id: z.number().int(), name: z.string().min(1) }))
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     return updateDivision(getDb(), user.email, data.id, { name: data.name })
   })
 
@@ -658,7 +658,7 @@ export const updateDivisionInvoiceFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data: { id, ...rest } }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     const row = await updateDivision(getDb(), user.email, id, rest)
     return { id: row.id }
   })
@@ -667,7 +667,7 @@ export const updateDivisionInvoiceFn = createServerFn({ method: 'POST' })
 export const getInvoicePrint = createServerFn()
   .validator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner', 'finance', 'admin', 'team')
     const inv = await env.DB.prepare(`select * from v_transactions where id = ? and direction = 'in'`).bind(data.id).first<TransactionRow>()
     if (!inv) throw new Error('Invoice not found')
     const own = await env.DB.prepare(`select division_id, company_id from transactions where id = ?`)
@@ -744,7 +744,7 @@ export const recordTaxPaymentFn = createServerFn({ method: 'POST' })
 export const getPnl = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner')
     const db = getDb()
     const companies = await listCompanies(db)
     const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
@@ -757,7 +757,7 @@ export const getPnl = createServerFn()
 export const getLedger = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner')
     const companies = await listCompanies(getDb())
     const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
     const f = toListFilter(data)
@@ -771,7 +771,7 @@ export const getLedger = createServerFn()
 export const getBalanceSheet = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'finance')
+    await requireRole('owner')
     const companies = await listCompanies(getDb())
     const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
     const today = new Date().toISOString().slice(0, 10)
@@ -797,7 +797,7 @@ export const setOpeningBalancesFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data }) => {
-    const user = await requireRole('owner', 'finance')
+    const user = await requireRole('owner')
     const { companyId, ...rest } = data
     return setOpeningBalances(getDb(), user.email, companyId, rest)
   })
