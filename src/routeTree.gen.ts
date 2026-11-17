@@ -25,6 +25,7 @@ import { Route as AppInvoicingRouteImport } from './routes/_app/invoicing'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
+import { Route as AppTaxRouteImport } from './routes/_app/tax'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppVendorsRouteImport } from './routes/_app/vendors'
@@ -111,6 +112,11 @@ const AppPerformanceRoute = AppPerformanceRouteImport.update({
   path: '/performance',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTaxRoute = AppTaxRouteImport.update({
+  id: '/tax',
+  path: '/tax',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTransactionsRoute = AppTransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof AppLogsRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
+  '/tax': typeof AppTaxRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/logs': typeof AppLogsRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
+  '/tax': typeof AppTaxRoute
   '/transactions': typeof AppTransactionsRoute
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/_app/logs': typeof AppLogsRoute
   '/_app/payables': typeof AppPayablesRoute
   '/_app/performance': typeof AppPerformanceRoute
+  '/_app/tax': typeof AppTaxRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/users': typeof AppUsersRoute
   '/_app/vendors': typeof AppVendorsRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/payables'
     | '/performance'
+    | '/tax'
     | '/transactions'
     | '/users'
     | '/vendors'
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/payables'
     | '/performance'
+    | '/tax'
     | '/transactions'
     | '/users'
     | '/vendors'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/_app/logs'
     | '/_app/payables'
     | '/_app/performance'
+    | '/_app/tax'
     | '/_app/transactions'
     | '/_app/users'
     | '/_app/vendors'
@@ -407,6 +419,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPerformanceRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/tax': {
+      id: '/_app/tax'
+      path: '/tax'
+      fullPath: '/tax'
+      preLoaderRoute: typeof AppTaxRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/transactions': {
       id: '/_app/transactions'
       path: '/transactions'
@@ -465,6 +484,7 @@ interface AppRouteChildren {
   AppLogsRoute: typeof AppLogsRoute
   AppPayablesRoute: typeof AppPayablesRoute
   AppPerformanceRoute: typeof AppPerformanceRoute
+  AppTaxRoute: typeof AppTaxRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppUsersRoute: typeof AppUsersRoute
   AppVendorsRoute: typeof AppVendorsRoute
@@ -486,6 +506,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppLogsRoute: AppLogsRoute,
   AppPayablesRoute: AppPayablesRoute,
   AppPerformanceRoute: AppPerformanceRoute,
+  AppTaxRoute: AppTaxRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppUsersRoute: AppUsersRoute,
   AppVendorsRoute: AppVendorsRoute,

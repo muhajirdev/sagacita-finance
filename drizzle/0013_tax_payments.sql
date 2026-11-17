@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `tax_period` text;

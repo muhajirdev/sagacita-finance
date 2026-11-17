@@ -209,7 +209,7 @@ export const addBudgetLineFn = createServerFn({ method: 'POST' })
 export const recordTransactionFn = createServerFn({ method: 'POST' })
   .validator(
     z.object({
-      kind: z.enum(TRANSACTION_KINDS).exclude(['settlement']),
+      kind: z.enum(TRANSACTION_KINDS).exclude(['settlement', 'tax_payment']),
       projectId: z.number().int().nullable().optional(),
       budgetLineId: z.number().int().nullable().optional(),
       companyId: z.number().int().nullable().optional(),

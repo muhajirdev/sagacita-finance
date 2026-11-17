@@ -5,7 +5,7 @@ import { env } from 'cloudflare:workers'
 import { asc, eq, like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { PPH_TYPES, PROJECT_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
+import { PPH_TYPES, PROJECT_TYPES, TAX_TYPES, USER_ROLES, divisions, employees, opexBudgets, payrollMonths, projects, transactions, users } from '#/db/schema'
 import { SESSION_COOKIE, hashPassword, readSession } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -31,6 +31,8 @@ import {
   createDivision,
   updateDivision,
   listCompanies,
+  recordTaxPayment,
+  taxDue,
 } from '#/lib/finance'
 
 type Role = (typeof USER_ROLES)[number]
@@ -552,4 +554,42 @@ export const renameDivisionFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireRole('owner', 'finance')
     return updateDivision(getDb(), user.email, data.id, { name: data.name })
+  })
+
+// ---------------------------------------------------------------- tax
+
+export const getTax = createServerFn()
+  .validator(z.object({ year: z.number().int().optional(), companyId: z.number().int().optional() }))
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const db = getDb()
+    const companies = await listCompanies(db)
+    const companyId = data.companyId ?? companies.find((c) => c.code === 'SRI')?.id ?? companies[0]?.id ?? 1
+    const year = data.year ?? new Date().getFullYear()
+    const rows = await taxDue(env.DB, companyId, year)
+    const payments = (
+      await env.DB.prepare(
+        `select t.id, t.category type, t.tax_period period, t.total amount, t.issue_date date, t.number, t.description from transactions t
+         where t.kind = 'tax_payment' and t.status != 'void' and t.company_id = ? and substr(t.tax_period, 1, 4) = ? order by t.tax_period, t.issue_date`,
+      )
+        .bind(companyId, String(year))
+        .all<{ id: number; type: string; period: string; amount: number; date: string; number: string | null; description: string | null }>()
+    ).results
+    return { companies, companyId, year, years: [year - 1, year, year + 1], rows, payments, today: new Date().toISOString().slice(0, 10) }
+  })
+
+export const recordTaxPaymentFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      companyId: z.number().int(),
+      taxType: z.enum(TAX_TYPES),
+      period: z.string(),
+      amount: z.number().positive(),
+      date: z.string().optional(),
+      number: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'finance')
+    return recordTaxPayment(getDb(), user.email, { ...data, createdBy: user.id })
   })

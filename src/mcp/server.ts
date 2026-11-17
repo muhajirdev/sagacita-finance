@@ -6,7 +6,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
-import { DOCUMENT_ENTITIES, PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, USER_ROLES } from '#/db/schema'
+import { DOCUMENT_ENTITIES, PARTY_KINDS, PPH_TYPES, PROJECT_TYPES, TAX_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, USER_ROLES } from '#/db/schema'
 import { bearerMatches } from '#/lib/auth'
 import { getDb } from '#/lib/db'
 import {
@@ -50,6 +50,8 @@ import {
   recordPayroll,
   updateTransaction,
   settleAdvance,
+  recordTaxPayment,
+  taxDue,
   createCompany,
   updateCompany,
   createDivision,
@@ -83,6 +85,7 @@ Tables:
                 settlement rows close a cash advance (advance_id): per-project rows with dpp = actual spent and total 0, plus one
                 balance row with dpp = -advance and total = spent - advance (positive = still owed to the person, negative = refund owed).
                 So sum(dpp) stays right without special cases. Paid is signed: a refund (payment in the other direction) subtracts.
+                tax_payment rows: tax deposited (category = pph21|pph23|pph4_2|pph26|ppn|bpjs_tk|bpjs_kes, tax_period = YYYY-MM), dpp 0.
                 LPJ: an approved, fully paid cash_advance has lpj_due; overdue when lpj_due < today and it is still not settled.
                 Paid / overdue are NOT stored: use v_transactions.
   payments      cash that moved: transaction_id, direction, amount, date, method, reference, note. Partial payment = several rows.
@@ -214,7 +217,7 @@ function createServer(env: Env, appUrl: string) {
         'Outgoing spend left as draft opens a pending approval (returned as `approval`); tell the person it is waiting for approval.',
       inputSchema: {
         actor: actorField,
-        kind: z.enum(TRANSACTION_KINDS).exclude(['settlement']),
+        kind: z.enum(TRANSACTION_KINDS).exclude(['settlement', 'tax_payment']),
         project: z.string().optional().describe('Project code or id. Omit for company spend (then companyId is required).'),
         budgetLineId: z.number().int().optional().describe('From project_budget. Needed for project spend.'),
         companyId: z.number().int().optional(),
@@ -316,6 +319,37 @@ function createServer(env: Env, appUrl: string) {
       inputSchema: { actor: actorField, id: z.number().int(), name: z.string().optional(), companyId: z.number().int().optional() },
     },
     async ({ actor, id, ...input }) => safe(() => updateDivision(db, actor, id, input)),
+  )
+
+  server.registerTool(
+    'record_tax_payment',
+    {
+      description:
+        'Record tax deposited to the tax office (PPh 21/23/4(2)/26, PPN) or to BPJS, for a tax month (masa pajak). PPh final (PP 55) = pph4_2. ' +
+        'It is not a cost line (the withheld PPh is already in the vendor bill); it shows on the Tax page against what is owed. Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        companyId: z.number().int().describe('The PT, from list_reference'),
+        taxType: z.enum(TAX_TYPES),
+        period: z.string().describe('Tax month it pays for, YYYY-MM'),
+        amount: z.number().positive(),
+        date: z.string().optional().describe('Date paid, YYYY-MM-DD; default today'),
+        number: z.string().optional().describe('NTPN / billing code / doc number'),
+        description: z.string().optional(),
+      },
+    },
+    async ({ actor, ...input }) => safe(() => recordTaxPayment(db, actor, input)),
+  )
+
+  server.registerTool(
+    'tax_due',
+    {
+      description:
+        'Tax owed vs deposited per tax month for one PT and year: PPh withheld on bills (+ PPh 21 and BPJS from Employee OpEx), PPN out minus in, ' +
+        'against tax payments. due > 0 = still to deposit by the deadline (PPh/BPJS: 15th of next month, PPN: end of next month).',
+      inputSchema: { companyId: z.number().int(), year: z.number().int() },
+    },
+    async ({ companyId, year }) => safe(() => taxDue(env.DB, companyId, year)),
   )
 
   server.registerTool(
