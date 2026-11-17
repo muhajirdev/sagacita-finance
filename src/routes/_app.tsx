@@ -63,6 +63,7 @@ const NAV: readonly NavItem[] = [
   { section: 'HR', to: '/employees', label: 'Employees', icon: IconPeople, roles: ['owner', 'hr'] },
   { section: 'HR', to: '/empopex', label: 'Payroll', icon: IconWallet, roles: ['owner', 'hr'] },
   { section: 'HR', to: '/medical', label: 'Medical', icon: IconCheck, roles: ['owner', 'hr'] },
+  { section: 'Admin', to: '/companies', label: 'PTs & Divisions', icon: IconBuilding, roles: ['owner', 'finance'] },
   { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
   { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory, roles: ['owner'] },
 ]

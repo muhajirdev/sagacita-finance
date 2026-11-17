@@ -11,6 +11,7 @@ import { getDb } from '#/lib/db'
 import { checkNpwp, cleanNik } from '#/lib/employee'
 import { filterSearch, rangeOf, toListFilter } from '#/lib/filters'
 import {
+  type TransactionRow,
   deleteBudgetLine,
   ensureParty,
   suggestClientCode,
@@ -99,8 +100,14 @@ export const getInvoicing = createServerFn()
   .handler(async ({ data }) => {
     await requireRole('owner', 'finance')
     const f = toListFilter(data)
-    const [invoices, ps] = await Promise.all([listTransactions(env.DB, { ...f, direction: 'in', limit: 2000 }), listProjects(getDb(), f)])
-    return { invoices, projects: ps }
+    const [invoices, ps, own] = await Promise.all([
+      listTransactions(env.DB, { ...f, direction: 'in', limit: 2000 }),
+      listProjects(getDb(), f),
+      // the division picked on the invoice itself (bank + logo); the view shows the project's division
+      env.DB.prepare(`select id, division_id from transactions where direction = 'in' and division_id is not null`).all<{ id: number; division_id: number }>(),
+    ])
+    const invoiceDivision = Object.fromEntries(own.results.map((r) => [r.id, r.division_id]))
+    return { invoices: invoices.map((i) => ({ ...i, invoice_division_id: invoiceDivision[i.id] ?? i.division_id })), projects: ps }
   })
 
 export const getExpenses = createServerFn()
@@ -125,6 +132,7 @@ export const updateTransactionFn = createServerFn({ method: 'POST' })
       withPpn: z.boolean().optional(),
       pphType: z.enum(PPH_TYPES).optional(),
       requestedBy: z.string().nullable().optional(),
+      divisionId: z.number().int().nullable().optional(),
     }),
   )
   .handler(async ({ data: { id, ...input } }) => {
@@ -637,6 +645,49 @@ export const renameDivisionFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireRole('owner', 'finance')
     return updateDivision(getDb(), user.email, data.id, { name: data.name })
+  })
+
+export const updateDivisionInvoiceFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      id: z.number().int(),
+      bankName: z.string().nullable(),
+      bankAccountNumber: z.string().nullable(),
+      bankAccountName: z.string().nullable(),
+      logo: z.string().nullable().optional(),
+    }),
+  )
+  .handler(async ({ data: { id, ...rest } }) => {
+    const user = await requireRole('owner', 'finance')
+    const row = await updateDivision(getDb(), user.email, id, rest)
+    return { id: row.id }
+  })
+
+/** Everything the printable invoice needs: the invoice, its division (bank + logo), the PT and the client. */
+export const getInvoicePrint = createServerFn()
+  .validator(z.object({ id: z.number().int() }))
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const inv = await env.DB.prepare(`select * from v_transactions where id = ? and direction = 'in'`).bind(data.id).first<TransactionRow>()
+    if (!inv) throw new Error('Invoice not found')
+    const own = await env.DB.prepare(`select division_id, company_id from transactions where id = ?`)
+      .bind(data.id)
+      .first<{ division_id: number | null; company_id: number | null }>()
+    const divisionId = own?.division_id ?? inv.division_id
+    const division = divisionId
+      ? await env.DB.prepare(`select id, name, bank_name, bank_account_number, bank_account_name, logo from divisions where id = ?`)
+          .bind(divisionId)
+          .first<{ id: number; name: string; bank_name: string | null; bank_account_number: string | null; bank_account_name: string | null; logo: string | null }>()
+      : null
+    const company = own?.company_id
+      ? await env.DB.prepare(`select name, npwp, address from companies where id = ?`).bind(own.company_id).first<{ name: string; npwp: string | null; address: string | null }>()
+      : null
+    const client = inv.client_id
+      ? await env.DB.prepare(`select name, legal_entity, address, npwp from parties where id = ?`)
+          .bind(inv.client_id)
+          .first<{ name: string; legal_entity: string | null; address: string | null; npwp: string | null }>()
+      : null
+    return { inv, division, company, client }
   })
 
 // ---------------------------------------------------------------- tax

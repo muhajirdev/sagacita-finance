@@ -159,6 +159,9 @@ function Invoicing() {
                     <InvoiceStatus t={i} />
                   </td>
                   <td className="td whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                    <a className="btn-ghost mr-1" href={`/invoice-print/${i.id}`} target="_blank" rel="noreferrer">
+                      PDF
+                    </a>
                     {i.outstanding > 0 && (
                       <>
                         {i.paid === 0 && (
@@ -246,6 +249,7 @@ function Invoicing() {
         <InvoiceForm
           invoice={form === 'new' ? null : form}
           projects={ref.projects}
+          divisions={ref.divisions}
           onClose={() => setForm(null)}
           onSaved={async () => {
             setForm(null)
@@ -266,11 +270,13 @@ function addDays(date: string, days: number) {
 function InvoiceForm({
   invoice,
   projects,
+  divisions,
   onClose,
   onSaved,
 }: {
-  invoice: TransactionRow | null
-  projects: { id: number; code: string; name: string; client: string }[]
+  invoice: (TransactionRow & { invoice_division_id?: number | null }) | null
+  projects: { id: number; code: string; name: string; client: string; divisionId: number }[]
+  divisions: { id: number; name: string; bankAccountNumber: string | null }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -279,6 +285,7 @@ function InvoiceForm({
   const [terms, setTerms] = useState(invoice ? termsOf(invoice) : 'NET 30')
   const [due, setDue] = useState(invoice?.due_date ?? addDays(today, 30))
   const [err, setErr] = useState('')
+  const [division, setDivision] = useState(String(invoice ? (invoice.invoice_division_id ?? '') : (projects[0]?.divisionId ?? '')))
   const applyTerms = (d: string, t: string) => {
     if (t === 'NET 14' || t === 'NET 30') setDue(addDays(d, t === 'NET 14' ? 14 : 30))
   }
@@ -296,6 +303,7 @@ function InvoiceForm({
             dueDate: due,
             withPpn: f.get('withPpn') === 'on',
             pphType: (f.get('pph23') === 'on' ? 'pph23' : 'none') as 'pph23' | 'none',
+            divisionId: division ? Number(division) : null,
           }
           try {
             if (invoice) await updateTransactionFn({ data: { id: invoice.id, ...common } })
@@ -316,9 +324,22 @@ function InvoiceForm({
               name="projectId"
               required
               options={projects.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.client} ${p.name}` }))}
+              onChange={(v) => {
+                const d = projects.find((p) => p.id === Number(v))?.divisionId
+                if (d) setDivision(String(d))
+              }}
             />
           </label>
         )}
+        <label className="field sm:col-span-2">
+          Division
+          <Select
+            value={division}
+            onChange={setDivision}
+            options={[{ value: '', label: 'Same as project' }, ...divisions.map((d) => ({ value: String(d.id), label: d.bankAccountNumber ? d.name : `${d.name} (no bank account yet)` }))]}
+          />
+          <span className="text-[12px] text-muted">Its bank account and logo are printed on the PDF invoice.</span>
+        </label>
         <label className="field">
           Invoice number
           <input className="input" name="number" defaultValue={invoice?.number ?? ''} />
