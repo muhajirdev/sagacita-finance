@@ -157,6 +157,30 @@ function Dashboard() {
               {d.overdue.count === 0 && <div className="px-5 py-6 text-[13px] text-muted">No overdue invoices.</div>}
             </div>
           </Section>
+
+          <Section
+            title={`LPJ overdue (${d.lpjOverdue.count})`}
+            right={
+              <Link to="/expenses" search={{ tab: 'paid' }} className="text-[13px] font-medium text-accent">
+                Cash advances
+              </Link>
+            }
+          >
+            <div className="card divide-y divide-line">
+              {d.lpjOverdue.items.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium">{t.party ?? t.requested_by ?? 'Cash advance'}</div>
+                    <div className="truncate text-[12px] text-muted">
+                      {t.number ?? t.description} · LPJ due {fmtDate(t.lpj_due)}
+                    </div>
+                  </div>
+                  <div className="text-[13px] font-medium tabular-nums text-bad">{rp(t.total)}</div>
+                </div>
+              ))}
+              {d.lpjOverdue.count === 0 && <div className="px-5 py-6 text-[13px] text-muted">Every paid advance has its LPJ in.</div>}
+            </div>
+          </Section>
         </div>
       </div>
 

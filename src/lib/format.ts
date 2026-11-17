@@ -13,6 +13,7 @@ export const KIND_LABEL: Record<string, string> = {
   vendor_bill: 'Vendor bill',
   cash_advance: 'Cash advance',
   reimbursement: 'Reimbursement',
+  settlement: 'LPJ / settlement',
 }
 
 export const nextWeekday = (weekday: number) => {

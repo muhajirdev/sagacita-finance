@@ -5,7 +5,7 @@ import { PPH_TYPES, TRANSACTION_KINDS } from '#/db/schema'
 import type { TransactionRow } from '#/lib/finance'
 import { StatusPill } from '#/components/ui'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
+import { recordPaymentFn, recordTransactionFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { Select, ui } from '#/components/dialogs'
 
 export function TransactionTable({ rows, showProject = true }: { rows: TransactionRow[]; showProject?: boolean }) {
@@ -72,7 +72,7 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                     Approve
                   </button>
                 )}
-                {t.status !== 'void' && t.outstanding > 0 && (
+                {t.status !== 'void' && t.outstanding !== 0 && (
                   <button
                     className="btn-ghost"
                     onClick={async () => {
@@ -84,8 +84,8 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                             label: `Amount ${t.direction === 'in' ? 'received' : 'paid'} (IDR)`,
                             type: 'number',
                             min: 1,
-                            defaultValue: String(t.outstanding),
-                            hint: `Outstanding ${rp(t.outstanding)}`,
+                            defaultValue: String(Math.abs(t.outstanding)),
+                            hint: t.outstanding < 0 ? `Refund owed ${rp(-t.outstanding)}` : `Outstanding ${rp(t.outstanding)}`,
                           },
                           { name: 'date', label: 'Date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
                         ],
@@ -94,21 +94,25 @@ export function TransactionTable({ rows, showProject = true }: { rows: Transacti
                       if (v) act(() => recordPaymentFn({ data: { transactionId: t.id, amount: Number(v.amount), date: v.date } }))
                     }}
                   >
-                    {t.direction === 'in' ? 'Received' : 'Pay'}
+                    {t.outstanding < 0 ? 'Refund received' : t.direction === 'in' ? 'Received' : 'Pay'}
                   </button>
                 )}
                 {t.kind === 'cash_advance' && t.status === 'approved' && t.outstanding === 0 && (
                   <button
                     className="btn-ghost"
-                    onClick={() =>
-                      act(() =>
-                        setStatusFn({
-                          data: { id: t.id, status: 'settled' },
-                        }),
+                    onClick={async () => {
+                      const v = await ui.prompt(
+                        'Submit LPJ',
+                        [
+                          { name: 'spent', label: 'Actually spent (IDR)', type: 'number', min: 0, defaultValue: String(t.total), hint: `Advanced ${rp(t.total)}` },
+                          { name: 'date', label: 'LPJ date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                        ],
+                        { submitLabel: 'Submit LPJ' },
                       )
-                    }
+                      if (v) act(() => settleAdvanceFn({ data: { advanceId: t.id, spent: Number(v.spent), date: v.date } }))
+                    }}
                   >
-                    Settle
+                    Submit LPJ
                   </button>
                 )}
                 {t.status !== 'void' && t.paid === 0 && (
@@ -156,7 +160,7 @@ export function TransactionForm({
   categories?: { id: number; category: string }[]
 }) {
   const router = useRouter()
-  const [kind, setKind] = useState<(typeof TRANSACTION_KINDS)[number]>('vendor_bill')
+  const [kind, setKind] = useState<Exclude<(typeof TRANSACTION_KINDS)[number], 'settlement'>>('vendor_bill')
   const [msg, setMsg] = useState('')
   return (
     <form
@@ -199,7 +203,7 @@ export function TransactionForm({
         <Select
           value={kind}
           onChange={(v) => setKind(v as typeof kind)}
-          options={TRANSACTION_KINDS.filter((k) => projectId || k !== 'client_invoice').map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+          options={TRANSACTION_KINDS.filter((k) => k !== 'settlement' && (projectId || k !== 'client_invoice')).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
         />
       </label>
       {projectId ? (

@@ -49,6 +49,7 @@ import {
   payrollSummary,
   recordPayroll,
   updateTransaction,
+  settleAdvance,
 } from '#/lib/finance'
 
 const GLOSSARY = `Talk to people in the web app's words, not the database's. Database term -> what people call it:
@@ -57,6 +58,7 @@ const GLOSSARY = `Talk to people in the web app's words, not the database's. Dat
   client_invoice -> "Invoice" (Invoicing page). dpp -> "net, before VAT". ppn -> "VAT 11%". pph -> "PPh" (23, 4(2), 26).
   vendor_bill -> "Vendor invoice" / "Expense". cash_advance -> "Cash advance". reimbursement -> "Reimbursement".
   Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
+  settlement -> "LPJ" / "Settlement" (the report closing a cash advance). lpj_due -> "LPJ deadline" (5 working days after the advance is paid).
   Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
   payroll_months -> "Employee OpEx". opex_budgets -> "Company OpEx". divisions -> agencies. companies -> PTs.
   users -> "User Management". pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
@@ -67,13 +69,17 @@ const SCHEMA_GUIDE = `Sagacita Finance data model (SQLite / Cloudflare D1). Mone
 
 START HERE: v_transactions — every transaction with names joined in and paid / outstanding / overdue computed.
   columns: id, kind, direction, status, number, issue_date, due_date, dpp, ppn, pph_type, pph, total,
-           paid, outstanding, overdue (0/1), category, description, requested_by, source, attachment_url,
+           paid, outstanding, overdue (0/1), advance_id, lpj_due, category, description, requested_by, source, attachment_url,
            company_id, company, division_id, division, project_id, project_code, project_name,
            client_id, client, budget_line_id, budget_line, party_id, party, party_kind, created_at, updated_at
 
 Tables:
-  transactions  the raw data. kind: client_invoice (direction in) | vendor_bill | cash_advance | reimbursement (direction out)
-                status: draft | approved | settled | void.  total = dpp + ppn - pph.
+  transactions  the raw data. kind: client_invoice (direction in) | vendor_bill | cash_advance | reimbursement | settlement (direction out)
+                status: draft | approved | settled | void.  total = dpp + ppn - pph (except settlement rows, below).
+                settlement rows close a cash advance (advance_id): per-project rows with dpp = actual spent and total 0, plus one
+                balance row with dpp = -advance and total = spent - advance (positive = still owed to the person, negative = refund owed).
+                So sum(dpp) stays right without special cases. Paid is signed: a refund (payment in the other direction) subtracts.
+                LPJ: an approved, fully paid cash_advance has lpj_due; overdue when lpj_due < today and it is still not settled.
                 Paid / overdue are NOT stored: use v_transactions.
   payments      cash that moved: transaction_id, direction, amount, date, method, reference, note. Partial payment = several rows.
   projects      id, code (project number), name, client_id -> parties, division_id -> divisions, type (retainer|project), status, start_date, end_date
@@ -204,7 +210,7 @@ function createServer(env: Env, appUrl: string) {
         'Outgoing spend left as draft opens a pending approval (returned as `approval`); tell the person it is waiting for approval.',
       inputSchema: {
         actor: actorField,
-        kind: z.enum(TRANSACTION_KINDS),
+        kind: z.enum(TRANSACTION_KINDS).exclude(['settlement']),
         project: z.string().optional().describe('Project code or id. Omit for company spend (then companyId is required).'),
         budgetLineId: z.number().int().optional().describe('From project_budget. Needed for project spend.'),
         companyId: z.number().int().optional(),
@@ -257,6 +263,28 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => recordPayment(db, actor, input)),
+  )
+
+  server.registerTool(
+    'settle_advance',
+    {
+      description:
+        'Close a paid cash advance with its LPJ (settlement report): what was actually spent, one line per project (omit projectId to keep the advance\'s project, null = company spend). ' +
+        'The advance becomes "settled" and budget vs actual uses the real spend. The difference becomes a settlement balance row: positive = still owed to the person (pay it with record_payment), ' +
+        'negative = refund owed to the company (record_payment on that row records the refund as cash in). Attach receipts to the advance with attach_document. ' +
+        'LPJ is due 5 working days after the advance is paid (v_transactions.lpj_due). Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        advanceId: z.number().int().describe('The cash_advance transaction id'),
+        lines: z
+          .array(z.object({ projectId: z.number().int().nullable().optional(), amount: z.number().int(), description: z.string().optional() }))
+          .min(1),
+        date: z.string().optional().describe('LPJ date, YYYY-MM-DD; default today'),
+        number: z.string().optional().describe('Settlement document number, if any'),
+        note: z.string().optional(),
+      },
+    },
+    async ({ actor, ...input }) => safe(() => settleAdvance(db, actor, input)),
   )
 
   server.registerTool(

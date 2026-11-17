@@ -547,6 +547,7 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
 }
 
 export async function setTransactionStatus(db: Db, actor: Actor, id: number, status: TransactionStatus) {
+  if (status === 'settled') throw new FinanceError('a cash advance is settled by its LPJ: use settle_advance with what was actually spent')
   if (status !== 'draft' && status !== 'void') {
     const pending = await db
       .select()
@@ -570,9 +571,11 @@ export async function setTransactionStatus(db: Db, actor: Actor, id: number, sta
   return row
 }
 
-async function paidSoFar(db: Db, transactionId: number) {
+/** Net cash moved for a transaction: payments in its own direction minus refunds the other way. */
+async function paidSoFar(db: Db, transactionId: number, direction?: 'in' | 'out') {
+  const dir = direction ?? (await db.select({ d: transactions.direction }).from(transactions).where(eq(transactions.id, transactionId)).get())?.d
   const r = await db
-    .select({ paid: sql<number>`coalesce(sum(${payments.amount}), 0)` })
+    .select({ paid: sql<number>`coalesce(sum(case when ${payments.direction} = ${dir} then ${payments.amount} else -${payments.amount} end), 0)` })
     .from(payments)
     .where(eq(payments.transactionId, transactionId))
     .get()
@@ -596,15 +599,18 @@ export async function recordPayment(
   const tx = await db.select().from(transactions).where(eq(transactions.id, input.transactionId)).get()
   if (!tx) throw new FinanceError(`transaction ${input.transactionId} not found`)
   if (tx.status === 'void') throw new FinanceError('transaction is void')
-  const outstanding = tx.total - (await paidSoFar(db, tx.id))
-  const amount = Math.round(input.amount ?? outstanding)
-  if (amount <= 0) throw new FinanceError('nothing outstanding on this transaction')
-  if (amount > outstanding) throw new FinanceError(`amount ${amount} is more than the outstanding ${outstanding}`)
+  const outstanding = tx.total - (await paidSoFar(db, tx.id, tx.direction))
+  // A negative outstanding (settlement where less was spent than advanced) is a refund: cash moving the other way.
+  const refund = outstanding < 0
+  const open = Math.abs(outstanding)
+  const amount = Math.round(input.amount ?? open)
+  if (amount <= 0 || open === 0) throw new FinanceError('nothing outstanding on this transaction')
+  if (amount > open) throw new FinanceError(`amount ${amount} is more than the outstanding ${open}`)
   const [row] = await db
     .insert(payments)
     .values({
       transactionId: tx.id,
-      direction: tx.direction,
+      direction: refund ? (tx.direction === 'in' ? 'out' : 'in') : tx.direction,
       amount,
       date: input.date || today(),
       companyId: tx.companyId,
@@ -615,7 +621,7 @@ export async function recordPayment(
     })
     .returning()
   await log(db, actor, 'pay', 'transactions', tx.id, row)
-  return { payment: row, outstanding: outstanding - amount }
+  return { payment: row, outstanding: refund ? outstanding + amount : outstanding - amount }
 }
 
 function spendSummary(t: typeof transactions.$inferSelect, partyName: string | null, projectCode: string | null) {
@@ -701,6 +707,91 @@ export async function undoPayment(db: Db, actor: Actor, paymentId: number) {
   return { deleted: row }
 }
 
+// ------------------------------------------------------------------ advance settlement (LPJ)
+
+export type SettlementLine = { projectId?: number | null; amount: number; description?: string | null }
+
+/**
+ * Closes a paid cash advance with its LPJ (settlement report): what was really spent, per project.
+ * Writes one settlement row per line (dpp = spent, total 0: the advance already paid it) and one balance row
+ * (dpp = -advance so the advance stops counting as cost; total = spent - advance). A positive balance is
+ * still owed to the person (pay it like any bill); a negative one is a refund owed back (record_payment
+ * records it as cash in). The advance becomes "settled". Receipts go on the advance with attach_document.
+ */
+export async function settleAdvance(
+  db: Db,
+  actor: Actor,
+  input: { advanceId: number; lines: SettlementLine[]; date?: string; number?: string | null; note?: string | null; createdBy?: number | null },
+) {
+  const adv = await db.select().from(transactions).where(eq(transactions.id, input.advanceId)).get()
+  if (!adv || adv.kind !== 'cash_advance') throw new FinanceError(`cash advance ${input.advanceId} not found`)
+  if (adv.status === 'settled') throw new FinanceError(`cash advance ${adv.id} is already settled`)
+  if (adv.status !== 'approved') throw new FinanceError(`cash advance ${adv.id} is ${adv.status}; only an approved, paid advance can be settled`)
+  const paid = await paidSoFar(db, adv.id, 'out')
+  if (paid < adv.total) throw new FinanceError(`cash advance ${adv.id} is not fully paid yet (paid ${paid} of ${adv.total})`)
+  const lines = input.lines.filter((l) => Math.round(l.amount) !== 0)
+  if (!lines.length) throw new FinanceError('give at least one line with the amount actually spent')
+  const date = input.date || today()
+  const spent = lines.reduce((a, l) => a + Math.round(l.amount), 0)
+  const balance = spent - adv.total
+  const base = {
+    kind: 'settlement' as const,
+    direction: 'out' as const,
+    status: 'approved' as const,
+    number: input.number || null,
+    companyId: adv.companyId,
+    partyId: adv.partyId,
+    advanceId: adv.id,
+    issueDate: date,
+    requestedBy: adv.requestedBy,
+    source: auditSource(db).source === 'import' ? ('import' as const) : ('web' as const),
+    createdBy: input.createdBy ?? null,
+  }
+  const rows: (typeof transactions.$inferSelect)[] = []
+  for (const l of lines) {
+    let projectId = adv.projectId
+    let divisionId = adv.divisionId
+    if (l.projectId !== undefined) {
+      projectId = l.projectId ? (await findProject(db, l.projectId)).id : null
+      divisionId = projectId ? null : adv.divisionId
+    }
+    const amount = Math.round(l.amount)
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        ...base,
+        projectId,
+        divisionId,
+        category: projectId ? null : adv.category,
+        description: l.description || `LPJ ${adv.number ?? '#' + adv.id}: spent`,
+        dpp: amount,
+        total: 0,
+      })
+      .returning()
+    await log(db, actor, 'create', 'transactions', row.id, row)
+    rows.push(row)
+  }
+  const what = balance > 0 ? `Rp ${balance.toLocaleString('id-ID')} still to pay` : balance < 0 ? `Rp ${(-balance).toLocaleString('id-ID')} to refund` : 'no difference'
+  const [bal] = await db
+    .insert(transactions)
+    .values({
+      ...base,
+      projectId: adv.projectId,
+      divisionId: adv.divisionId,
+      budgetLineId: adv.budgetLineId,
+      category: adv.category,
+      description: `LPJ ${adv.number ?? '#' + adv.id}: spent Rp ${spent.toLocaleString('id-ID')} of Rp ${adv.total.toLocaleString('id-ID')} advanced, ${what}${input.note ? ' · ' + input.note : ''}`,
+      dueDate: balance !== 0 ? date : null,
+      dpp: -adv.dpp,
+      total: balance,
+    })
+    .returning()
+  await log(db, actor, 'create', 'transactions', bal.id, bal)
+  await db.update(transactions).set({ status: 'settled', updatedAt: new Date().toISOString() }).where(eq(transactions.id, adv.id))
+  await log(db, actor, 'update', 'transactions', adv.id, { status: 'settled', settledBy: bal.id })
+  return { advance: { ...adv, status: 'settled' as const }, lines: rows, balance: bal, spent, difference: balance }
+}
+
 // ------------------------------------------------------------------ approvals
 
 const KIND_TEXT: Record<string, string> = {
@@ -708,6 +799,7 @@ const KIND_TEXT: Record<string, string> = {
   vendor_bill: 'Vendor bill',
   cash_advance: 'Cash advance',
   reimbursement: 'Reimbursement',
+  settlement: 'Settlement',
 }
 
 type ApprovalEntity = (typeof approvals.$inferSelect)['entity']
@@ -856,6 +948,9 @@ export type TransactionRow = {
   paid: number
   outstanding: number
   overdue: number
+  advance_id: number | null
+  /** Cash advances: LPJ (settlement report) deadline, 5 working days after it was paid. Null once settled. */
+  lpj_due: string | null
   category: string | null
   description: string | null
   requested_by: string | null

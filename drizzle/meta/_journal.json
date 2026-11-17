@@ -78,6 +78,13 @@
       "when": 1794903826464,
       "tag": "0010_vendor_list",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794904137924,
+      "tag": "0011_advance_settlement",
+      "breakpoints": true
     }
   ]
 }

@@ -24,10 +24,12 @@ import {
   recordPayment,
   recordTransaction,
   setTransactionStatus,
+  settleAdvance,
   acknowledgeSpend,
   decideApproval,
   listApprovals,
   submitBudget,
+  type TransactionRow,
 } from '#/lib/finance'
 
 async function currentUser() {
@@ -99,6 +101,11 @@ export const getDashboard = createServerFn().handler(async () => {
   const due = await payablesDue(env.DB, weekEnd)
   const overdue = live.filter((t) => t.overdue).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
   const recent = await listTransactions(env.DB, { limit: 8 })
+  const lpj = (
+    await env.DB.prepare(`select * from v_transactions where lpj_due is not null and lpj_due < ? order by lpj_due`)
+      .bind(today)
+      .all<TransactionRow>()
+  ).results
   return {
     today,
     weekEnd,
@@ -109,6 +116,7 @@ export const getDashboard = createServerFn().handler(async () => {
     overdue: { count: overdue.length, amount: overdue.reduce((a, t) => a + t.outstanding, 0), items: overdue.slice(0, 5) },
     payables: { amount: due.totalOutstanding, count: due.items.length, items: due.items.slice(0, 5) },
     recent,
+    lpjOverdue: { count: lpj.length, amount: lpj.reduce((a, t) => a + t.total, 0), items: lpj.slice(0, 5) },
   }
 })
 
@@ -201,7 +209,7 @@ export const addBudgetLineFn = createServerFn({ method: 'POST' })
 export const recordTransactionFn = createServerFn({ method: 'POST' })
   .validator(
     z.object({
-      kind: z.enum(TRANSACTION_KINDS),
+      kind: z.enum(TRANSACTION_KINDS).exclude(['settlement']),
       projectId: z.number().int().nullable().optional(),
       budgetLineId: z.number().int().nullable().optional(),
       companyId: z.number().int().nullable().optional(),
@@ -236,6 +244,19 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     return recordPayment(getDb(), user.email, { ...data, createdBy: user.id })
+  })
+
+export const settleAdvanceFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ advanceId: z.number().int(), spent: z.number().int().min(0), date: z.string().optional(), note: z.string().optional() }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    return settleAdvance(getDb(), user.email, {
+      advanceId: data.advanceId,
+      lines: [{ amount: data.spent }],
+      date: data.date,
+      note: data.note,
+      createdBy: user.id,
+    })
   })
 
 export const getApprovals = createServerFn()
