@@ -973,13 +973,13 @@ export async function pnlReport(d1: D1Database, year: number) {
 const FORBIDDEN =
   /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint)\b/i
 
-/** Runs one read-only SELECT. The users table (password hashes) cannot be read. */
+/** Runs one read-only SELECT. The users (password hashes) and employees (KTP, NPWP, salary) tables cannot be read. */
 export async function readonlyQuery(d1: D1Database, query: string, limit = 500) {
   const q = query.trim().replace(/;\s*$/, '')
   if (!/^(select|with)\b/i.test(q)) throw new FinanceError('only SELECT / WITH queries are allowed')
   if (q.includes(';')) throw new FinanceError('one statement only')
   if (FORBIDDEN.test(q)) throw new FinanceError('read-only: that keyword is not allowed')
-  if (/\busers\b|password_hash|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
+  if (/\busers\b|\bemployees\b|password_hash|sqlite_master|_cf_/i.test(q)) throw new FinanceError('that table is not readable')
   const { results } = await d1.prepare(`select * from (${q}) limit ${Math.min(limit, 1000)}`).all()
   return results
 }

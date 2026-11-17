@@ -87,7 +87,7 @@ Tables:
   documents     files in R2: entity (transaction|party|project), entity_id, kind, filename, content_type, size. URL = <app>/files/<id>
   activity_log  audit log, who changed what: at, actor, action, entity, entity_id, data (json), source (web|mcp|import), batch_id
   payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount. Cost = sum of the four.
-  (users is not readable here)
+  (users and employees are not readable here: HR data)
 
 Rules:
   actual spend of a budget line = sum(dpp) of non-void 'out' transactions on it (cost before tax)

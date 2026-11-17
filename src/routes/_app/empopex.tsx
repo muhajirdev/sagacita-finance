@@ -1,19 +1,23 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { z } from 'zod'
 import { useState } from 'react'
 
 import { MONTHS, Modal, PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
-import { getPayroll, savePayrollFn } from '#/server/pages'
+import { getEmployees, getPayroll, saveEmployeeFn, savePayrollFn } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/empopex')({
-  loader: () => getPayroll({ data: {} }),
+  validateSearch: z.object({ year: z.coerce.number().int().optional() }),
+  loaderDeps: ({ search }) => ({ year: search.year }),
+  loader: async ({ deps }) => ({ ...(await getPayroll({ data: { year: deps.year } })), employees: await getEmployees() }),
   component: EmployeeOpex,
 })
 
 function EmployeeOpex() {
-  const { year, rows, divisions } = Route.useLoaderData()
+  const { year, rows, divisions, employees } = Route.useLoaderData()
   const router = useRouter()
+  const navigate = Route.useNavigate()
   const [open, setOpen] = useState(false)
   const sum = (k: 'netSalary' | 'bpjsTk' | 'bpjsKes' | 'pph21') => rows.reduce((a, r) => a + r[k], 0)
   const cost = (r: (typeof rows)[number]) => r.netSalary + r.bpjsTk + r.bpjsKes + r.pph21
@@ -26,9 +30,16 @@ function EmployeeOpex() {
         title="Employee OpEx"
         sub="Monthly payroll totals per division. Owner and HR only on the web."
         right={
-          <button className="btn" onClick={() => setOpen(true)}>
-            + Enter month
-          </button>
+          <div className="flex items-center gap-2">
+            <Select
+              value={String(year)}
+              onChange={(v) => navigate({ search: { year: Number(v) } })}
+              options={[2025, 2026, 2027].map((y) => ({ value: String(y), label: String(y) }))}
+            />
+            <button className="btn whitespace-nowrap" onClick={() => setOpen(true)}>
+              + Enter month
+            </button>
+          </div>
         }
       />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -86,6 +97,8 @@ function EmployeeOpex() {
         </table>
       </div>
       <p className="mt-3 text-[12px] text-muted">Division columns are net salary. BPJS and PPh are the company totals across divisions.</p>
+
+      <Employees employees={employees} divisions={divisions} />
 
       {open && (
         <Modal title="Enter monthly payroll" onClose={() => setOpen(false)}>
@@ -153,6 +166,182 @@ function EmployeeOpex() {
             <p className="self-end text-[12px] text-muted">Saving the same month and division again replaces it.</p>
             <div className="flex justify-end gap-2 sm:col-span-2">
               <button type="button" className="btn-ghost py-2" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn">Save</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  )
+}
+
+type Employee = Awaited<ReturnType<typeof getEmployees>>[number]
+
+function Employees({ employees, divisions }: { employees: Employee[]; divisions: { id: number; name: string }[] }) {
+  const router = useRouter()
+  const [edit, setEdit] = useState<Partial<Employee> | null>(null)
+  const divName = (id: number | null | undefined) => divisions.find((d) => d.id === id)?.name ?? '—'
+  return (
+    <>
+      <div className="mb-3 mt-10 flex items-center justify-between">
+        <h2 className="text-[15px] font-semibold">Employees · {employees.filter((e) => !e.endDate).length} active</h2>
+        <button className="btn-ghost" onClick={() => setEdit({})}>
+          + Add employee
+        </button>
+      </div>
+      <div className="card overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="th">Name</th>
+              <th className="th">Position</th>
+              <th className="th">Division</th>
+              <th className="th">KTP</th>
+              <th className="th">NPWP</th>
+              <th className="th num">Base salary</th>
+              <th className="th">Start</th>
+              <th className="th" />
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((e) => (
+              <tr key={e.id} className={e.endDate ? 'opacity-50' : ''}>
+                <td className="td font-medium">{e.name}</td>
+                <td className="td">{e.position ?? '—'}</td>
+                <td className="td">{divName(e.divisionId)}</td>
+                <td className="td font-mono text-[12px]">{e.ktp ?? '—'}</td>
+                <td className="td font-mono text-[12px]">{e.npwp ?? '—'}</td>
+                <td className="td num">{e.baseSalary != null ? rp(e.baseSalary) : '—'}</td>
+                <td className="td whitespace-nowrap text-[12px]">{e.startDate ?? '—'}</td>
+                <td className="td">
+                  <button className="btn-ghost" onClick={() => setEdit(e)}>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {employees.length === 0 && (
+              <tr>
+                <td className="td text-muted" colSpan={8}>
+                  No employees yet. Use "Add employee".
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {edit && (
+        <Modal title={edit.id ? `Edit ${edit.name}` : 'Add employee'} onClose={() => setEdit(null)}>
+          <form
+            className="grid gap-4 sm:grid-cols-2"
+            onSubmit={async (ev) => {
+              ev.preventDefault()
+              const f = new FormData(ev.currentTarget)
+              const s = (k: string) => String(f.get(k) ?? '').trim() || null
+              const salary = s('baseSalary')
+              const div = s('divisionId')
+              const ok = await ui.run(
+                () =>
+                  saveEmployeeFn({
+                    data: {
+                      id: edit.id,
+                      name: s('name') ?? '',
+                      position: s('position'),
+                      divisionId: div ? Number(div) : null,
+                      ktp: s('ktp'),
+                      npwp: s('npwp'),
+                      ptkp: s('ptkp'),
+                      bpjsTkNo: s('bpjsTkNo'),
+                      bpjsKesNo: s('bpjsKesNo'),
+                      address: s('address'),
+                      phone: s('phone'),
+                      bankAccount: s('bankAccount'),
+                      baseSalary: salary ? Number(salary) : null,
+                      startDate: s('startDate'),
+                      endDate: s('endDate'),
+                      notes: s('notes'),
+                    },
+                  }),
+                'Employee saved',
+              )
+              if (ok) {
+                setEdit(null)
+                await router.invalidate()
+              }
+            }}
+          >
+            <label className="field">
+              Name
+              <input className="input" name="name" defaultValue={edit.name ?? ''} required />
+            </label>
+            <label className="field">
+              Position
+              <input className="input" name="position" defaultValue={edit.position ?? ''} />
+            </label>
+            <label className="field">
+              Division
+              <Select
+                name="divisionId"
+                defaultValue={String(edit.divisionId ?? divisions[0]?.id)}
+                options={divisions.map((d) => ({ value: String(d.id), label: d.name }))}
+              />
+            </label>
+            <label className="field">
+              Base salary (monthly)
+              <input className="input" name="baseSalary" type="number" min="0" defaultValue={edit.baseSalary ?? ''} />
+            </label>
+            <label className="field">
+              KTP (NIK)
+              <input className="input" name="ktp" defaultValue={edit.ktp ?? ''} />
+            </label>
+            <label className="field">
+              NPWP
+              <input className="input" name="npwp" defaultValue={edit.npwp ?? ''} />
+            </label>
+            <label className="field">
+              PTKP status
+              <Select
+                name="ptkp"
+                defaultValue={edit.ptkp ?? 'TK/0'}
+                options={['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3']}
+              />
+            </label>
+            <label className="field">
+              BPJS Ketenagakerjaan no.
+              <input className="input" name="bpjsTkNo" defaultValue={edit.bpjsTkNo ?? ''} />
+            </label>
+            <label className="field">
+              BPJS Kesehatan no.
+              <input className="input" name="bpjsKesNo" defaultValue={edit.bpjsKesNo ?? ''} />
+            </label>
+            <label className="field sm:col-span-2">
+              Address
+              <input className="input" name="address" defaultValue={edit.address ?? ''} />
+            </label>
+            <label className="field">
+              Phone
+              <input className="input" name="phone" defaultValue={edit.phone ?? ''} />
+            </label>
+            <label className="field">
+              Bank account
+              <input className="input" name="bankAccount" defaultValue={edit.bankAccount ?? ''} placeholder="BCA 1234567890" />
+            </label>
+            <label className="field">
+              Start date
+              <input className="input" name="startDate" type="date" defaultValue={edit.startDate ?? ''} />
+            </label>
+            <label className="field">
+              End date (if left)
+              <input className="input" name="endDate" type="date" defaultValue={edit.endDate ?? ''} />
+            </label>
+            <label className="field sm:col-span-2">
+              Notes
+              <input className="input" name="notes" defaultValue={edit.notes ?? ''} />
+            </label>
+            <div className="flex justify-end gap-2 sm:col-span-2">
+              <button type="button" className="btn-ghost py-2" onClick={() => setEdit(null)}>
                 Cancel
               </button>
               <button className="btn">Save</button>

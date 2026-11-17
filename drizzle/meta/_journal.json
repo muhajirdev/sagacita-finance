@@ -57,6 +57,13 @@
       "when": 1794899605414,
       "tag": "0007_client_list",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794902499145,
+      "tag": "0008_employees",
+      "breakpoints": true
     }
   ]
 }
