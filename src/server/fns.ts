@@ -119,10 +119,31 @@ export const getDashboard = createServerFn()
       .bind(today)
       .all<TransactionRow>()
   ).results.filter(scope)
+  // Billed vs spent per division for the same range / client / project (division filter left off so all show).
+  const dw: string[] = []
+  const da: unknown[] = []
+  if (f.from) (dw.push('t.issue_date >= ?'), da.push(f.from))
+  if (f.to) (dw.push('t.issue_date <= ?'), da.push(f.to))
+  if (f.clientId) (dw.push('pr.client_id = ?'), da.push(f.clientId))
+  if (f.projectCode) (dw.push('pr.code = ?'), da.push(f.projectCode))
+  const byDivision = (
+    await env.DB.prepare(
+      `select d.id, coalesce(d.name, 'No division') name,
+              sum(case when t.direction = 'in' then t.dpp else 0 end) billed,
+              sum(case when t.direction = 'out' then t.dpp else 0 end) spent
+       from transactions t left join projects pr on pr.id = t.project_id
+       left join divisions d on d.id = coalesce(pr.division_id, t.division_id)
+       where t.status != 'void' and t.kind != 'tax_payment'${dw.map((w) => ' and ' + w).join('')}
+       group by 1, 2 having billed != 0 or spent != 0 order by billed desc`,
+    )
+      .bind(...da)
+      .all<{ id: number | null; name: string; billed: number; spent: number }>()
+  ).results
   return {
     today,
     weekEnd,
     projects,
+    byDivision,
     billing: live.reduce((a, t) => a + t.dpp, 0),
     collected: live.reduce((a, t) => a + t.paid, 0),
     receivable: live.reduce((a, t) => a + t.outstanding, 0),

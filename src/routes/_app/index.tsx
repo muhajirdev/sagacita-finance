@@ -83,6 +83,47 @@ function Dashboard() {
         />
       </div>
 
+      {d.byDivision.length > 0 && (
+        <div className="mt-10">
+          <Section title="By division">
+            <div className="card overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead className="text-left text-[12px] text-muted">
+                  <tr>
+                    <th className="px-5 py-2.5 font-medium">Division</th>
+                    <th className="px-5 py-2.5 text-right font-medium">Billed</th>
+                    <th className="px-5 py-2.5 text-right font-medium">Spent</th>
+                    <th className="px-5 py-2.5 text-right font-medium">Margin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {d.byDivision.map((r) => {
+                    const margin = r.billed - r.spent
+                    const picked = search.division === r.id
+                    return (
+                      <tr
+                        key={r.name}
+                        className={`transition ${r.id ? 'cursor-pointer hover:bg-black/[0.015]' : ''} ${picked ? 'bg-black/[0.03] font-medium' : ''}`}
+                        onClick={() => r.id && go({ search: (prev) => ({ ...prev, division: picked ? undefined : r.id! }) })}
+                      >
+                        <td className="px-5 py-2.5">{r.name}</td>
+                        <td className="px-5 py-2.5 text-right tabular-nums" title={rp(r.billed)}>{rpShort(r.billed)}</td>
+                        <td className="px-5 py-2.5 text-right tabular-nums" title={rp(r.spent)}>{rpShort(r.spent)}</td>
+                        <td className={`px-5 py-2.5 text-right tabular-nums ${margin < 0 ? 'text-bad' : ''}`} title={rp(margin)}>
+                          {rpShort(margin)}
+                          {r.billed > 0 && <span className="ml-1.5 text-[12px] text-muted">{Math.round((margin / r.billed) * 100)}%</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[12px] text-muted">Billed and spent before tax, by invoice / bill date. Payroll is not included. Click a division to filter the dashboard.</p>
+          </Section>
+        </div>
+      )}
+
       <div className="mt-10 grid gap-10 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <Section

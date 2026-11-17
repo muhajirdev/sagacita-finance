@@ -674,3 +674,16 @@ export const getPnl = createServerFn()
     const f = toListFilter(data)
     return { company, from: f.from, to: f.to, ...(await pnlByAccount(env.DB, company.id, f)) }
   })
+
+// ---------------------------------------------------------------- Buku Besar (general ledger)
+
+export const getLedger = createServerFn()
+  .validator(filterSearch)
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const companies = await listCompanies(getDb())
+    const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
+    const f = toListFilter(data)
+    const { generalLedger } = await import('#/lib/ledger')
+    return { company, from: f.from, to: f.to, ...(await generalLedger(env.DB, company.id, f)) }
+  })
