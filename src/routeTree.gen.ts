@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
+import { Route as AppBalanceSheetRouteImport } from './routes/_app/balance-sheet'
 import { Route as AppBudgetRouteImport } from './routes/_app/budget'
 import { Route as AppCashflowRouteImport } from './routes/_app/cashflow'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
@@ -57,6 +58,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppApprovalsRoute = AppApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBalanceSheetRoute = AppBalanceSheetRouteImport.update({
+  id: '/balance-sheet',
+  path: '/balance-sheet',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBudgetRoute = AppBudgetRouteImport.update({
@@ -165,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/approvals': typeof AppApprovalsRoute
+  '/balance-sheet': typeof AppBalanceSheetRoute
   '/budget': typeof AppBudgetRoute
   '/cashflow': typeof AppCashflowRoute
   '/clients': typeof AppClientsRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/approvals': typeof AppApprovalsRoute
+  '/balance-sheet': typeof AppBalanceSheetRoute
   '/budget': typeof AppBudgetRoute
   '/cashflow': typeof AppCashflowRoute
   '/clients': typeof AppClientsRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/_app/approvals': typeof AppApprovalsRoute
+  '/_app/balance-sheet': typeof AppBalanceSheetRoute
   '/_app/budget': typeof AppBudgetRoute
   '/_app/cashflow': typeof AppCashflowRoute
   '/_app/clients': typeof AppClientsRoute
@@ -247,6 +256,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/approvals'
+    | '/balance-sheet'
     | '/budget'
     | '/cashflow'
     | '/clients'
@@ -272,6 +282,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/approvals'
+    | '/balance-sheet'
     | '/budget'
     | '/cashflow'
     | '/clients'
@@ -299,6 +310,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/_app/approvals'
+    | '/_app/balance-sheet'
     | '/_app/budget'
     | '/_app/cashflow'
     | '/_app/clients'
@@ -364,6 +376,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/balance-sheet': {
+      id: '/_app/balance-sheet'
+      path: '/balance-sheet'
+      fullPath: '/balance-sheet'
+      preLoaderRoute: typeof AppBalanceSheetRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/budget': {
@@ -511,6 +530,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
+  AppBalanceSheetRoute: typeof AppBalanceSheetRoute
   AppBudgetRoute: typeof AppBudgetRoute
   AppCashflowRoute: typeof AppCashflowRoute
   AppClientsRoute: typeof AppClientsRoute
@@ -535,6 +555,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
+  AppBalanceSheetRoute: AppBalanceSheetRoute,
   AppBudgetRoute: AppBudgetRoute,
   AppCashflowRoute: AppCashflowRoute,
   AppClientsRoute: AppClientsRoute,
