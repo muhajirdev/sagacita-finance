@@ -40,29 +40,39 @@ export const Route = createFileRoute('/_app')({
 
 type Role = 'owner' | 'finance' | 'admin' | 'hr'
 
-/** Same pages, sections and role access as the original app, plus Payment run, Approvals and All transactions. */
-const NAV = [
-  { section: 'Overview', to: '/', label: 'Dashboard', icon: IconHome, roles: ['owner', 'finance'] },
-  { section: 'Operations', to: '/projects', label: 'Projects', icon: IconFolder, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Operations', to: '/budget', label: 'Budget Control', icon: IconGauge, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Operations', to: '/invoicing', label: 'Invoicing', icon: IconReceipt, roles: ['owner', 'finance'] },
-  { section: 'Operations', to: '/expenses', label: 'Expenses', icon: IconWallet, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Operations', to: '/payables', label: 'Payment run', icon: IconCalendar, roles: ['owner', 'finance'] },
-  { section: 'Operations', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
+/** Sidebar grouping as Tanya asked (2026-11-17): Account, Project OpEx, Internal OpEx, Tax, Reporting, HR, then Admin. */
+const NAV: readonly NavItem[] = [
+  { section: 'Account', to: '/clients', label: 'Client Data', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Account', to: '/projects', label: 'Projects', icon: IconFolder, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Account', to: '/budget', label: 'Budget Control', icon: IconGauge, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Account', to: '/expenses', search: { tab: 'settled' }, label: 'Settlement / LPJ', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Project OpEx', to: '/expenses', label: 'Expenses', icon: IconWallet, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Project OpEx', to: '/invoicing', label: 'Invoices', icon: IconReceipt, roles: ['owner', 'finance'] },
+  { section: 'Project OpEx', to: '/vendors', label: 'Vendor List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Project OpEx', to: '/payables', label: 'Payment run', icon: IconCalendar, roles: ['owner', 'finance'] },
+  { section: 'Project OpEx', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
+  { section: 'Internal OpEx', to: '/compopex', label: 'Internal OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
+  { section: 'Tax', to: '/tax', label: 'Tax', icon: IconReceipt, roles: ['owner', 'finance'] },
+  { section: 'Reporting', to: '/', label: 'Dashboard', icon: IconHome, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/performance', label: 'Performance', icon: IconChart, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/cashflow', label: 'Cash Flow', icon: IconWave, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/pnl', label: 'P&L', icon: IconChart, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/ledger', label: 'Buku Besar', icon: IconList, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/balance-sheet', label: 'Balance Sheet', icon: IconChart, roles: ['owner', 'finance'] },
-  { section: 'Reporting', to: '/tax', label: 'Tax', icon: IconReceipt, roles: ['owner', 'finance'] },
+  { section: 'Reporting', to: '/ledger', label: 'Buku Besar', icon: IconList, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/transactions', label: 'All transactions', icon: IconList, roles: ['owner', 'finance'] },
-  { section: 'People & Costs', to: '/empopex', label: 'Employee OpEx', icon: IconPeople, roles: ['owner', 'hr'] },
-  { section: 'People & Costs', to: '/compopex', label: 'Internal OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
-  { section: 'Admin', to: '/clients', label: 'Client List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
-  { section: 'Admin', to: '/vendors', label: 'Vendor List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
+  { section: 'HR', to: '/empopex', label: 'Employees & Payroll', icon: IconPeople, roles: ['owner', 'hr'] },
   { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
   { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory, roles: ['owner'] },
-] as const
+]
+
+type NavItem = {
+  section: string
+  to: string
+  search?: { tab: string }
+  label: string
+  icon: () => React.ReactNode
+  roles: readonly Role[]
+}
 
 function NavList({ role, onPick }: { role: Role; onPick?: () => void }) {
   const items = NAV.filter((n) => (n.roles as readonly Role[]).includes(role))
@@ -75,12 +85,13 @@ function NavList({ role, onPick }: { role: Role; onPick?: () => void }) {
           <div className="flex flex-col gap-0.5">
             {items
               .filter((n) => n.section === sec)
-              .map(({ to, label, icon: Icon }) => (
+              .map(({ to, search, label, icon: Icon }) => (
                 <Link
-                  key={to}
+                  key={label}
                   to={to}
+                  search={search as never}
                   onClick={onPick}
-                  activeOptions={{ exact: to === '/' }}
+                  activeOptions={{ exact: to === '/', includeSearch: !!search }}
                   className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition hover:bg-black/[0.04]"
                   activeProps={{ className: '!bg-black/[0.06] !text-ink' }}
                 >
