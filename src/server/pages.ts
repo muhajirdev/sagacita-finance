@@ -33,6 +33,7 @@ import {
   updateDivision,
   listCompanies,
   recordTaxPayment,
+  recordMedicalClaim,
   taxDue,
   pnlByAccount,
 } from '#/lib/finance'
@@ -308,6 +309,28 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
   })
 
 // ------------------------------------------------------------ employees (HR data, owner / hr)
+
+export const getMedicalClaims = createServerFn()
+  .validator(yearSchema)
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'hr')
+    const year = String(data.year ?? new Date().getFullYear())
+    const { results } = await env.DB.prepare(
+      `select id, issue_date, party, description, total, paid, outstanding, status from v_transactions
+       where kind = 'reimbursement' and status != 'void' and (category = 'Medical' or account like 'Medical%') and substr(issue_date, 1, 4) = ?
+       order by issue_date desc, id desc`,
+    )
+      .bind(year)
+      .all<{ id: number; issue_date: string; party: string | null; description: string | null; total: number; paid: number; outstanding: number; status: string }>()
+    return results
+  })
+
+export const medicalClaimFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ employeeId: z.number().int(), amount: z.number().positive(), date: z.string().optional(), description: z.string().optional() }))
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'hr')
+    return recordMedicalClaim(getDb(), user.email, { ...data, createdBy: user.id })
+  })
 
 export const getEmployees = createServerFn().handler(async () => {
   await requireRole('owner', 'hr')

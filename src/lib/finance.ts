@@ -8,6 +8,7 @@ import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import {
   accounts,
   documents,
+  employees,
   payrollMonths,
   activityLog,
   approvals,
@@ -936,6 +937,40 @@ async function defaultRevenueAccount(db: Db) {
 }
 
 /** Sets the COA line on one or more transactions (any status; it only changes how the P&L groups them). */
+/**
+ * HR files an employee's medical claim: a reimbursement to that employee on the Medical COA account, with no project.
+ * It then follows the normal expense flow (approval, payment run).
+ */
+export async function recordMedicalClaim(
+  db: Db,
+  actor: Actor,
+  input: { employeeId: number; amount: number; date?: string; description?: string | null; attachmentUrl?: string | null; createdBy?: number | null; source?: 'web' | 'whatsapp' },
+) {
+  const emp = await db.select().from(employees).where(eq(employees.id, input.employeeId)).get()
+  if (!emp) throw new FinanceError(`employee ${input.employeeId} not found`)
+  const company = emp.divisionId
+    ? (await db.select().from(divisions).where(eq(divisions.id, emp.divisionId)).get())?.companyId
+    : (await db.select().from(companies).orderBy(asc(companies.id)).get())?.id
+  const account = await db.select().from(accounts).where(sql`lower(${accounts.name}) like 'medical%'`).get()
+  return recordTransaction(db, actor, {
+    kind: 'reimbursement',
+    companyId: company ?? null,
+    divisionId: emp.divisionId,
+    partyName: emp.name,
+    accountId: account?.id ?? null,
+    category: 'Medical',
+    description: `Medical claim: ${input.description?.trim() || emp.name}`,
+    issueDate: input.date,
+    dpp: input.amount,
+    withPpn: false,
+    pphType: 'none',
+    requestedBy: emp.name,
+    attachmentUrl: input.attachmentUrl ?? null,
+    source: input.source ?? 'web',
+    createdBy: input.createdBy ?? null,
+  })
+}
+
 /**
  * Finance tax's step on a client invoice: enter Billing (DPP) and Tax (PPN), with an optional note.
  * Account receivable = billing + tax (minus PPh the client withholds, if any). The invoice then counts as sent.
