@@ -5,6 +5,7 @@ import { PageHeader, Section, StatusPill, UsageBar } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { addBudgetLineFn, getProject, submitBudgetFn } from '#/server/fns'
 import { ui } from '#/components/dialogs'
+import { updateProjectFn } from '#/server/pages'
 
 export const Route = createFileRoute('/_app/projects/$code')({
   loader: ({ params }) => getProject({ data: { code: params.code } }),
@@ -19,7 +20,7 @@ function ProjectPage() {
     { label: 'Charge to client', value: t.charge },
     { label: 'Budget (ceiling)', value: t.ceiling },
     { label: 'Spent', value: t.actual },
-    { label: 'Margin so far', value: t.actualMargin },
+    { label: 'Margin so far', value: project.contractValue == null ? t.actualMargin : project.contractValue - t.actual },
   ]
   return (
     <>
@@ -51,7 +52,37 @@ function ProjectPage() {
           </div>
         }
       />
-      <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <button
+          className="card p-5 text-left"
+          title="Contract / PO value the client signed, before tax. Click to change."
+          onClick={async () => {
+            const v = await ui.prompt('Contract / PO value', [
+              {
+                name: 'value',
+                label: 'Value from the signed PO or contract (IDR, before tax)',
+                type: 'number',
+                min: 0,
+                defaultValue: project.contractValue == null ? '' : String(project.contractValue),
+                required: false,
+                hint: 'Leave empty if there is no PO yet',
+              },
+            ])
+            if (!v) return
+            try {
+              await updateProjectFn({ data: { id: project.id, contractValue: v.value === '' ? null : Number(v.value) } })
+              ui.toast('Contract value saved')
+              await router.invalidate()
+            } catch (e) {
+              ui.error(e)
+            }
+          }}
+        >
+          <div className="eyebrow">Contract / PO value</div>
+          <div className="mt-2 text-[22px] font-semibold tracking-[-0.02em] tabular-nums">
+            {project.contractValue == null ? <span className="text-[15px] font-medium text-accent">+ Set</span> : rpShort(project.contractValue)}
+          </div>
+        </button>
         {kpis.map((k) => (
           <div key={k.label} className="card p-5">
             <div className="eyebrow">{k.label}</div>
