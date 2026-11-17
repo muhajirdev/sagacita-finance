@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Modal, PageHeader, Tabs } from '#/components/ui'
 import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
+import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setAccountFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
@@ -20,7 +20,10 @@ type Tab = (typeof TABS)[number][0]
 
 export const Route = createFileRoute('/_app/expenses')({
   validateSearch: z.object({ tab: z.enum(['all', 'request', 'unpaid', 'paid', 'settled']).optional() }),
-  loader: async () => ({ rows: await getExpenses(), projects: await getProjects(), vendors: (await getReference()).vendors }),
+  loader: async () => {
+    const ref = await getReference()
+    return { rows: await getExpenses(), projects: await getProjects(), vendors: ref.vendors, accounts: ref.accounts }
+  },
   component: Expenses,
 })
 
@@ -40,7 +43,7 @@ const STAGE_PILL = {
 }
 
 function Expenses() {
-  const { rows, projects, vendors } = Route.useLoaderData()
+  const { rows, projects, vendors, accounts } = Route.useLoaderData()
   const { tab = 'all' } = Route.useSearch()
   const navigate = Route.useNavigate()
   const router = useRouter()
@@ -76,6 +79,7 @@ function Expenses() {
               <th className="th">Project</th>
               <th className="th">SOW Item</th>
               <th className="th">Vendor / Category</th>
+              <th className="th">COA</th>
               <th className="th">Purpose</th>
               <th className="th num">Amount</th>
               <th className="th">Requested By</th>
@@ -100,6 +104,23 @@ function Expenses() {
                   <td className="td">
                     {t.party ?? '—'}
                     <div className="text-[12px] text-muted">{KIND_LABEL[t.kind]}</div>
+                  </td>
+                  <td className="td" onClick={(e) => e.stopPropagation()}>
+                    {t.kind !== 'tax_payment' && (
+                      <select
+                        className={`input w-44 py-1 text-[12px] ${t.account_id ? '' : 'text-muted'}`}
+                        value={t.account_id ?? ''}
+                        title={t.account ?? 'Pick the chart of accounts line'}
+                        onChange={(e) => act(() => setAccountFn({ data: { ids: [t.id], accountId: e.target.value ? Number(e.target.value) : null } }))}
+                      >
+                        <option value="">Pick COA…</option>
+                        {accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="td max-w-64">
                     {t.description}
@@ -223,7 +244,7 @@ function Expenses() {
             })}
             {list.length === 0 && (
               <tr>
-                <td className="td text-muted" colSpan={8}>
+                <td className="td text-muted" colSpan={9}>
                   No expenses in this view.
                 </td>
               </tr>
@@ -234,6 +255,7 @@ function Expenses() {
       {open && (
         <ExpenseForm
           projects={projects}
+          accounts={accounts}
           vendors={vendors}
           onClose={() => setOpen(false)}
           onSaved={async () => {
@@ -254,11 +276,13 @@ const CATEGORIES = [
 
 function ExpenseForm({
   projects,
+  accounts,
   vendors,
   onClose,
   onSaved,
 }: {
   projects: { id: number; code: string; client: string }[]
+  accounts: { id: number; code: string; name: string; group: string }[]
   vendors: { id: number; name: string }[]
   onClose: () => void
   onSaved: () => void
@@ -286,6 +310,7 @@ function ExpenseForm({
                 projectId,
                 budgetLineId: Number(s('budgetLineId')),
                 partyName: s('partyName'),
+                accountId: s('accountId') ? Number(s('accountId')) : null,
                 description: s('description'),
                 number: s('number'),
                 dueDate: s('dueDate'),
@@ -338,6 +363,16 @@ function ExpenseForm({
           ) : (
             <input className="input" name="partyName" required />
           )}
+        </label>
+        <label className="field sm:col-span-2">
+          COA (chart of accounts)
+          <Select
+            name="accountId"
+            placeholder="Pick the COA line"
+            options={accounts
+              .filter((a) => a.group === 'cost_of_service' || a.group === 'operating_expense')
+              .map((a) => ({ value: String(a.id), label: `${a.code} ${a.name}` }))}
+          />
         </label>
         <label className="field sm:col-span-2">
           Purpose / description
