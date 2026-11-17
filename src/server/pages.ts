@@ -163,8 +163,14 @@ export const getCashflow = createServerFn()
   .validator(yearSchema)
   .handler(async ({ data }) => {
     await requireRole('owner', 'finance')
-    const year = data.year ?? new Date().getFullYear()
     const d1 = env.DB
+    const yearRows = await d1
+      .prepare(`select distinct substr(date, 1, 4) y from payments where date is not null order by y`)
+      .all<{ y: string }>()
+    const years = yearRows.results.map((r) => Number(r.y)).filter((y) => y > 2000)
+    const year = data.year ?? new Date().getFullYear()
+    if (!years.includes(year)) years.push(year)
+    years.sort()
     const totals = await d1
       .prepare(`select direction, coalesce(sum(amount), 0) v from payments group by direction`)
       .all<{ direction: 'in' | 'out'; v: number }>()
@@ -207,6 +213,7 @@ export const getCashflow = createServerFn()
       .first<{ v: number; n: number }>()
     return {
       year,
+      years,
       overdue: overdue?.v ?? 0,
       overdueCount: overdue?.n ?? 0,
       collected: total('in'),
