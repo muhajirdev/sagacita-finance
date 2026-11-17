@@ -456,3 +456,25 @@ export const openingBalances = sqliteTable('opening_balances', {
   updatedBy: text('updated_by'),
   updatedAt: text('updated_at'),
 })
+
+// ---------------------------------------------------------------- LPJ links
+
+/**
+ * A secret link that lets the person holding a cash advance fill their LPJ without a login:
+ * spend items (date, description, amount, receipt document id) they submit for finance to review.
+ * One per advance. The link stops working once the advance is settled.
+ */
+export const lpjLinks = sqliteTable('lpj_links', {
+  id: id(),
+  advanceId: integer('advance_id')
+    .notNull()
+    .unique()
+    .references(() => transactions.id),
+  token: text('token').notNull().unique(),
+  /** JSON array of { date, description, amount, documentId } once submitted. */
+  items: text('items'),
+  note: text('note'),
+  submittedAt: text('submitted_at'),
+  createdBy: text('created_by'),
+  createdAt: createdAt(),
+})

@@ -141,6 +141,13 @@
       "when": 1794907739709,
       "tag": "0019_payroll_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1794908382733,
+      "tag": "0020_lpj_links",
+      "breakpoints": true
     }
   ]
 }

@@ -65,6 +65,7 @@ import {
   createDivision,
   updateDivision,
 } from '#/lib/finance'
+import { lpjLinkFor, settleFromLpj } from '#/lib/lpj'
 
 const GLOSSARY = `Talk to people in the web app's words, not the database's. Database term -> what people call it:
   budget_lines -> "SOW items" (the project's Budget Control page lists them). ceiling = "max expense + ASF".
@@ -72,7 +73,7 @@ const GLOSSARY = `Talk to people in the web app's words, not the database's. Dat
   client_invoice -> "Invoice" (Invoicing page). dpp -> "net, before VAT". ppn -> "VAT 11%". pph -> "PPh" (23, 4(2), 26).
   vendor_bill -> "Vendor invoice" / "Expense". cash_advance -> "Cash advance". reimbursement -> "Reimbursement".
   Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
-  settlement -> "LPJ" / "Settlement" (the report closing a cash advance). lpj_due -> "LPJ deadline" (5 working days after the advance is paid).
+  settlement -> "LPJ" / "Settlement" (the report closing a cash advance). lpj_links -> "LPJ link" (secret no-login page where the advance holder fills the LPJ; submitted_at set = "LPJ submitted, waiting finance review"). lpj_due -> "LPJ deadline" (5 working days after the advance is paid).
   Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
   payroll_months -> "Employee OpEx". opex_budgets -> "Internal OpEx" (was Company OpEx). divisions -> agencies. companies -> PTs.
   users -> "User Management". pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
@@ -460,6 +461,29 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => settleAdvance(db, actor, input)),
+  )
+
+  server.registerTool(
+    'lpj_link',
+    {
+      description:
+        'Get (or make) the LPJ link for a paid cash advance: a secret no-login URL the advance holder opens on their phone to list what they spent ' +
+        '(date, description, amount, receipt photo per item) and submit. Send it to them on WhatsApp. The link closes once the advance is settled. ' +
+        'Also returns what they submitted so far (submittedAt null = not yet). Finance then reviews and settles it in the web app (Expenses, "Review LPJ") or with settle_lpj.',
+      inputSchema: { actor: actorField, advanceId: z.number().int().describe('The cash_advance transaction id') },
+    },
+    async ({ actor, advanceId }) => safe(() => lpjLinkFor(db, actor, appUrl, advanceId)),
+  )
+
+  server.registerTool(
+    'settle_lpj',
+    {
+      description:
+        'Settle a cash advance from the LPJ the holder submitted through their LPJ link: one settlement line per submitted item, the difference becomes a bill (overspend) or refund (underspend), same as settle_advance. ' +
+        'Finance decides this: only when a person from finance asks. Confirm first.',
+      inputSchema: { actor: actorField, advanceId: z.number().int(), date: z.string().optional().describe('LPJ date, YYYY-MM-DD; default today') },
+    },
+    async ({ actor, ...input }) => safe(() => settleFromLpj(db, actor, input)),
   )
 
   server.registerTool(
