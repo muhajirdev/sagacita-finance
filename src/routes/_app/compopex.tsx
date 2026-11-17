@@ -1,21 +1,25 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import { z } from 'zod'
 
 import { TransactionForm } from '#/components/transactions'
 import { MONTHS, Modal, PageHeader, Stat, UsageBar } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
 import { getReference } from '#/server/fns'
 import { getCompanyOpex, setOpexBudgetFn } from '#/server/pages'
-import { ui } from '#/components/dialogs'
+import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/compopex')({
-  loader: async () => ({ opex: await getCompanyOpex({ data: {} }), ref: await getReference() }),
+  validateSearch: z.object({ year: z.coerce.number().int().optional() }),
+  loaderDeps: ({ search }) => ({ year: search.year }),
+  loader: async ({ deps }) => ({ opex: await getCompanyOpex({ data: { year: deps.year } }), ref: await getReference() }),
   component: CompanyOpex,
 })
 
 function CompanyOpex() {
   const { opex, ref } = Route.useLoaderData()
   const router = useRouter()
+  const navigate = Route.useNavigate()
   const [record, setRecord] = useState(false)
   const month = new Date().getFullYear() === opex.year ? new Date().getMonth() + 1 : 12
   const rows = opex.rows.map((r) => {
@@ -29,12 +33,21 @@ function CompanyOpex() {
   return (
     <>
       <PageHeader
-        title="Company OpEx"
-        sub="Annual budget per category against monthly actuals (company spend with no project, before tax)."
+        title="Internal OpEx"
+        sub="Household / office spend with no project (rent, utilities, supplies, subscriptions...), by COA, against the annual budget. Before tax."
         right={
-          <button className="btn" onClick={() => setRecord(true)}>
-            + Record company spend
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-28">
+              <Select
+                value={String(opex.year)}
+                onChange={(v) => navigate({ search: { year: Number(v) } })}
+                options={[opex.year - 1, opex.year, opex.year + 1].map((y) => ({ value: String(y), label: String(y) }))}
+              />
+            </div>
+            <button className="btn" onClick={() => setRecord(true)}>
+              + Record internal spend
+            </button>
+          </div>
         }
       />
       <div className="grid gap-4 sm:grid-cols-3">
@@ -108,7 +121,7 @@ function CompanyOpex() {
       <p className="mt-3 text-[12px] text-muted">Click a budget to change it. Monthly cells: M = million (juta), B = billion (miliar).</p>
 
       {record && (
-        <Modal title="Record company spend" onClose={() => setRecord(false)}>
+        <Modal title="Record internal spend" onClose={() => setRecord(false)}>
           <TransactionForm companies={ref.companies} categories={ref.categories} />
           <div className="mt-3 text-right">
             <button

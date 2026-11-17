@@ -97,7 +97,7 @@ function Performance() {
             <Line label="= Revenue" value={billing - owner.projectExpenses} strong />
             <Line label="− Employee OpEx (YTD)" value={-owner.employeeOpex} muted />
             <Line label="= Operating Profit / EBITDA" value={billing - owner.projectExpenses - owner.employeeOpex} strong />
-            <Line label="− Company OpEx (YTD)" value={-owner.companyOpex} muted />
+            <Line label="− Internal OpEx (YTD)" value={-owner.companyOpex} muted />
             <Line
               label="= Estimated Net Profit (before tax)"
               value={billing - owner.projectExpenses - owner.employeeOpex - owner.companyOpex}

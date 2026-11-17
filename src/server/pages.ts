@@ -363,9 +363,10 @@ export const getCompanyOpex = createServerFn()
     const db = getDb()
     const budgets = await db.select().from(opexBudgets).where(eq(opexBudgets.fiscalYear, year)).orderBy(asc(opexBudgets.sortOrder))
     const actual = await env.DB.prepare(
-      `select coalesce(category, 'Uncategorised') category, cast(substr(issue_date, 6, 2) as integer) m, sum(dpp) v
-       from transactions where direction = 'out' and status != 'void' and project_id is null and substr(issue_date, 1, 4) = ?
-       group by category, m`,
+      `select coalesce(ac.name, t.category, 'Uncategorised') category, cast(substr(t.issue_date, 6, 2) as integer) m, sum(t.dpp) v
+       from transactions t left join accounts ac on ac.id = t.account_id
+       where t.direction = 'out' and t.status != 'void' and t.project_id is null and t.kind != 'tax_payment' and substr(t.issue_date, 1, 4) = ?
+       group by 1, 2`,
     )
       .bind(String(year))
       .all<{ category: string; m: number; v: number }>()
@@ -379,6 +380,7 @@ export const getCompanyOpex = createServerFn()
     for (const [category, months] of byCat)
       if (!budgets.some((b) => b.category === category))
         rows.push({ id: 0, category, fiscalYear: year, annualBudget: 0, isFixed: false, sortOrder: 999, months })
+    rows.sort((a, b) => b.months.reduce((x, v) => x + v, 0) - a.months.reduce((x, v) => x + v, 0))
     return { year, rows }
   })
 

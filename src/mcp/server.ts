@@ -70,7 +70,7 @@ const GLOSSARY = `Talk to people in the web app's words, not the database's. Dat
   Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
   settlement -> "LPJ" / "Settlement" (the report closing a cash advance). lpj_due -> "LPJ deadline" (5 working days after the advance is paid).
   Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
-  payroll_months -> "Employee OpEx". opex_budgets -> "Company OpEx". divisions -> agencies. companies -> PTs.
+  payroll_months -> "Employee OpEx". opex_budgets -> "Internal OpEx" (was Company OpEx). divisions -> agencies. companies -> PTs.
   users -> "User Management". pnl_report / billing - costs -> "Performance" and "Net Profit Summary". approvals -> "Approvals".
   Money: say "Rp 1.2B" for billion (miliar) and "Rp 350M" for million (juta), or write it out in full.
 Never show ids, table or column names to people unless they ask.`
@@ -668,7 +668,7 @@ function createServer(env: Env, appUrl: string) {
       description:
         'Give someone a web app login. Returns a one-time temporary password: send it to that person privately, ' +
         'never in a group chat, and tell them to change it. Roles: owner = everything; finance = projects, budget, invoicing, expenses, reports; ' +
-        'admin = projects, budget, expenses, clients; hr = Employee OpEx and Company OpEx.',
+        'admin = projects, budget, expenses, clients; hr = Employee OpEx and Internal OpEx.',
       inputSchema: { actor: actorField, email: z.string().email(), name: z.string().min(1), role: z.enum(USER_ROLES) },
     },
     async ({ actor, ...input }) => safe(async () => ({ ...(await addUser(db, actor, input)), login: `${appUrl}/login` })),
