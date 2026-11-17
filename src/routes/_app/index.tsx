@@ -8,8 +8,9 @@ import { filterSearch, pickFilters } from '#/lib/filters'
 
 export const Route = createFileRoute('/_app/')({
   beforeLoad: ({ context }) => {
-    if (context.user.role === 'admin') throw redirect({ to: '/budget' })
-    if (context.user.role === 'hr') throw redirect({ to: '/empopex' })
+    // Dashboard (Reporting) is owner-only; everyone else lands on their first section.
+    if (context.user.role === 'hr') throw redirect({ to: '/employees' })
+    if (context.user.role !== 'owner') throw redirect({ to: '/budget' })
   },
   validateSearch: filterSearch,
   loaderDeps: ({ search }) => pickFilters(search),

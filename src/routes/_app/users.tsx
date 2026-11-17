@@ -13,8 +13,9 @@ export const Route = createFileRoute('/_app/users')({
 
 const ROLE_HELP: Record<string, string> = {
   owner: 'Everything, including payroll, approvals and users',
-  finance: 'Projects, budgets, invoicing, expenses, reports',
-  admin: 'Projects, budget control, expenses, clients',
+  finance: 'Account, Project OpEx, Internal OpEx and Tax',
+  admin: 'Account, Project OpEx and Internal OpEx',
+  team: 'Account and Project OpEx',
   hr: 'Employees, Payroll and Medical',
 }
 

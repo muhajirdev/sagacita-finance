@@ -96,7 +96,8 @@ export const logout = createServerFn({ method: 'POST' }).handler(() => {
 export const getDashboard = createServerFn()
   .validator(filterSearch)
   .handler(async ({ data }) => {
-  await requireUser()
+  const me = await requireUser()
+  if (me.role !== 'owner') throw new Error("You don't have access to this section")
   const db = getDb()
   const f = toListFilter(data)
   // "Now" items (overdue, to pay, LPJ) ignore the date range but follow division/client/project.
@@ -201,7 +202,8 @@ export const getProject = createServerFn()
 export const getTransactions = createServerFn()
   .validator(filterSearch.extend({ openOnly: z.boolean().optional(), direction: z.enum(['in', 'out']).optional() }))
   .handler(async ({ data: { openOnly, direction, ...search } }) => {
-    await requireUser()
+    const me = await requireUser()
+    if (me.role !== 'owner') throw new Error("You don't have access to this section")
     return listTransactions(env.DB, { ...toListFilter(search), openOnly, direction, limit: 2000 })
   })
 
