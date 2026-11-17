@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { PPH_TYPES, PROJECT_TYPES, TRANSACTION_KINDS, TRANSACTION_STATUSES, activityLog, users } from '#/db/schema'
 import { SESSION_COOKIE, SESSION_DAYS, readSession, signSession, verifyPassword } from '#/lib/auth'
 import { getDb } from '#/lib/db'
+import { filterSearch, toListFilter } from '#/lib/filters'
 import {
   addBudgetLine,
   createProject,
@@ -90,24 +91,33 @@ export const logout = createServerFn({ method: 'POST' }).handler(() => {
 
 // ---------------------------------------------------------------- reads
 
-export const getDashboard = createServerFn().handler(async () => {
+export const getDashboard = createServerFn()
+  .validator(filterSearch)
+  .handler(async ({ data }) => {
   await requireUser()
   const db = getDb()
-  const projects = await listProjects(db)
+  const f = toListFilter(data)
+  // "Now" items (overdue, to pay, LPJ) ignore the date range but follow division/client/project.
+  const scope = (t: TransactionRow) =>
+    (!f.divisionId || t.division_id === f.divisionId) && (!f.clientId || t.client_id === f.clientId) && (!f.projectCode || t.project_code === f.projectCode)
+  const projects = await listProjects(db, f)
   const today = new Date().toISOString().slice(0, 10)
-  const inTx = await listTransactions(env.DB, { direction: 'in', limit: 1000 })
+  const inTx = await listTransactions(env.DB, { ...f, direction: 'in', limit: 2000 })
+  const openIn = (await listTransactions(env.DB, { ...f, from: undefined, to: undefined, direction: 'in', openOnly: true, limit: 2000 })).filter(scope)
   const live = inTx.filter((t) => t.status !== 'void')
   const friday = new Date()
   friday.setDate(friday.getDate() + ((5 - friday.getDay() + 7) % 7))
   const weekEnd = friday.toISOString().slice(0, 10)
-  const due = await payablesDue(env.DB, weekEnd)
-  const overdue = live.filter((t) => t.overdue).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
-  const recent = await listTransactions(env.DB, { limit: 8 })
+  const dueAll = await payablesDue(env.DB, weekEnd)
+  const dueItems = dueAll.items.filter(scope)
+  const due = { items: dueItems, totalOutstanding: dueItems.reduce((a, t) => a + t.outstanding, 0) }
+  const overdue = openIn.filter((t) => t.overdue).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  const recent = await listTransactions(env.DB, { ...f, limit: 8 })
   const lpj = (
     await env.DB.prepare(`select * from v_transactions where lpj_due is not null and lpj_due < ? order by lpj_due`)
       .bind(today)
       .all<TransactionRow>()
-  ).results
+  ).results.filter(scope)
   return {
     today,
     weekEnd,
@@ -132,13 +142,24 @@ export const getReference = createServerFn().handler(async () => {
     clients: (await listParties(db, 'client')).map((c) => ({ id: c.id, name: c.name, code: c.code })),
     vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name })),
     accounts: (await listAccounts(db)).filter((a) => a.group !== 'balance'),
+    projects: (
+      await env.DB.prepare(`select p.id, p.code, p.name, c.name as client from projects p join parties c on c.id = p.client_id order by p.code`).all<{
+        id: number
+        code: string
+        name: string
+        client: string
+      }>()
+    ).results,
   }
 })
 
-export const getProjects = createServerFn().handler(async () => {
-  await requireUser()
-  return listProjects(getDb())
-})
+/** All projects, or only those matching the page filters when given. */
+export const getProjects = createServerFn()
+  .validator(filterSearch.optional())
+  .handler(async ({ data }) => {
+    await requireUser()
+    return listProjects(getDb(), data ? toListFilter(data) : {})
+  })
 
 export const getProject = createServerFn()
   .validator(z.object({ code: z.string() }))
@@ -154,10 +175,10 @@ export const getProject = createServerFn()
   })
 
 export const getTransactions = createServerFn()
-  .validator(z.object({ openOnly: z.boolean().optional(), direction: z.enum(['in', 'out']).optional() }))
-  .handler(async ({ data }) => {
+  .validator(filterSearch.extend({ openOnly: z.boolean().optional(), direction: z.enum(['in', 'out']).optional() }))
+  .handler(async ({ data: { openOnly, direction, ...search } }) => {
     await requireUser()
-    return listTransactions(env.DB, data)
+    return listTransactions(env.DB, { ...toListFilter(search), openOnly, direction, limit: 2000 })
   })
 
 export const getPayables = createServerFn()

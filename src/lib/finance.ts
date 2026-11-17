@@ -28,6 +28,7 @@ import {
   type TAX_TYPES,
 } from '#/db/schema'
 import { hashPassword } from '#/lib/auth'
+import type { ListFilter } from '#/lib/filters'
 import { auditSource, type Db } from '#/lib/db'
 import { cleanClientCode, suggestClientCode } from '#/lib/client-code'
 import { computeTax, type PphType } from '#/lib/tax'
@@ -234,7 +235,20 @@ export async function findProject(db: Db, ref: string | number) {
 
 // ------------------------------------------------------------------ projects
 
-export async function listProjects(db: Db) {
+/**
+ * Projects with budget totals (lifetime of each project), optionally filtered.
+ * A date range keeps projects whose period overlaps it (no dates = always kept).
+ * Totals come from three grouped queries, not one set per project.
+ */
+export async function listProjects(db: Db, f: ListFilter = {}) {
+  const where = [
+    f.divisionId ? eq(projects.divisionId, f.divisionId) : undefined,
+    f.clientId ? eq(projects.clientId, f.clientId) : undefined,
+    f.projectCode ? eq(projects.code, f.projectCode) : undefined,
+    f.projectStatus ? eq(projects.status, f.projectStatus) : undefined,
+    f.to ? sql`(${projects.startDate} is null or ${projects.startDate} <= ${f.to})` : undefined,
+    f.from ? sql`(coalesce(${projects.endDate}, ${projects.startDate}) is null or coalesce(${projects.endDate}, ${projects.startDate}) >= ${f.from})` : undefined,
+  ].filter((w) => w !== undefined)
   const rows = await db
     .select({
       id: projects.id,
@@ -247,13 +261,61 @@ export async function listProjects(db: Db) {
       client: parties.name,
       clientId: projects.clientId,
       division: divisions.name,
+      divisionId: projects.divisionId,
     })
     .from(projects)
     .innerJoin(parties, eq(parties.id, projects.clientId))
     .innerJoin(divisions, eq(divisions.id, projects.divisionId))
+    .where(where.length ? and(...where) : undefined)
     .orderBy(asc(projects.code))
-  const budgets = await Promise.all(rows.map((p) => projectBudget(db, p.id)))
-  return rows.map((p, i) => ({ ...p, totals: budgets[i].totals }))
+  if (!rows.length) return []
+  const totals = await projectTotals(db)
+  return rows.map((p) => ({ ...p, totals: totals(p.id) }))
+}
+
+/** Budget totals for every project at once (same numbers as projectBudget(...).totals). */
+async function projectTotals(db: Db) {
+  const [lines, spend, billed] = await Promise.all([
+    db
+      .select({ id: budgetLines.id, projectId: budgetLines.projectId, charge: budgetLines.charge, maxExpense: budgetLines.maxExpense, asf: budgetLines.asfAmount })
+      .from(budgetLines),
+    db
+      .select({ projectId: transactions.projectId, lineId: transactions.budgetLineId, v: sql<number>`coalesce(sum(${transactions.dpp}), 0)` })
+      .from(transactions)
+      .where(and(sql`${transactions.projectId} is not null`, eq(transactions.direction, 'out'), sql`${transactions.status} != 'void'`))
+      .groupBy(transactions.projectId, transactions.budgetLineId),
+    db
+      .select({ projectId: transactions.projectId, v: sql<number>`coalesce(sum(${transactions.dpp}), 0)` })
+      .from(transactions)
+      .where(and(sql`${transactions.projectId} is not null`, eq(transactions.direction, 'in'), sql`${transactions.status} != 'void'`))
+      .groupBy(transactions.projectId),
+  ])
+  const spendBy = new Map(spend.map((s) => [`${s.projectId}:${s.lineId}`, Number(s.v)]))
+  const billedBy = new Map(billed.map((b) => [b.projectId, Number(b.v)]))
+  const linesBy = new Map<number, typeof lines>()
+  for (const l of lines) linesBy.set(l.projectId, [...(linesBy.get(l.projectId) ?? []), l])
+  return (projectId: number) => {
+    let charge = 0, asf = 0, ceiling = 0, actual = 0
+    for (const l of linesBy.get(projectId) ?? []) {
+      charge += l.charge
+      asf += l.asf
+      ceiling += l.maxExpense + l.asf
+      actual += spendBy.get(`${projectId}:${l.id}`) ?? 0
+    }
+    const unbudgeted = spendBy.get(`${projectId}:null`) ?? 0
+    actual += unbudgeted
+    return {
+      charge,
+      asf,
+      ceiling,
+      actual,
+      unbudgeted,
+      remaining: ceiling - actual,
+      usedPct: ceiling ? Math.round((actual / ceiling) * 1000) / 10 : 0,
+      actualMargin: charge - actual,
+      billed: billedBy.get(projectId) ?? 0,
+    }
+  }
 }
 
 export async function createProject(
@@ -1229,7 +1291,7 @@ export async function listApprovals(
 
 // ------------------------------------------------------------------ reads over the view
 
-export type TransactionFilter = {
+export type TransactionFilter = ListFilter & {
   projectId?: number
   direction?: 'in' | 'out'
   kind?: TransactionKind
@@ -1269,6 +1331,8 @@ export type TransactionRow = {
   source: string
   company: string
   division: string | null
+  division_id: number | null
+  client_id: number | null
   project_id: number | null
   project_code: string | null
   project_name: string | null
@@ -1287,9 +1351,14 @@ export async function listTransactions(d1: D1Database, f: TransactionFilter = {}
   if (f.status) (where.push('status = ?'), args.push(f.status))
   if (f.openOnly) where.push("outstanding > 0 and status != 'void'")
   if (f.dueBy) (where.push('due_date <= ?'), args.push(f.dueBy))
+  if (f.from) (where.push('issue_date >= ?'), args.push(f.from))
+  if (f.to) (where.push('issue_date <= ?'), args.push(f.to))
+  if (f.divisionId) (where.push('division_id = ?'), args.push(f.divisionId))
+  if (f.clientId) (where.push('client_id = ?'), args.push(f.clientId))
+  if (f.projectCode) (where.push('project_code = ?'), args.push(f.projectCode))
   const q = `select * from v_transactions ${where.length ? 'where ' + where.join(' and ') : ''}
     order by coalesce(due_date, issue_date) desc, id desc limit ?`
-  args.push(Math.min(f.limit ?? 200, 1000))
+  args.push(Math.min(f.limit ?? 200, 2000))
   const { results } = await d1
     .prepare(q)
     .bind(...args)

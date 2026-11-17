@@ -4,8 +4,10 @@ import { z } from 'zod'
 import { TransactionForm, TransactionTable } from '#/components/transactions'
 import { PageHeader, Section } from '#/components/ui'
 import { getReference, getTransactions } from '#/server/fns'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters } from '#/lib/filters'
 
-const search = z.object({
+const search = filterSearch.extend({
   open: z.boolean().optional(),
   direction: z.enum(['in', 'out']).optional(),
 })
@@ -13,12 +15,10 @@ const search = z.object({
 export const Route = createFileRoute('/_app/transactions')({
   validateSearch: search,
   loaderDeps: ({ search }) => search,
-  loader: async ({ deps }) => ({
-    rows: await getTransactions({
-      data: { openOnly: deps.open, direction: deps.direction },
-    }),
-    ref: await getReference(),
-  }),
+  loader: async ({ deps: { open, ...deps } }) => {
+    const [rows, ref] = await Promise.all([getTransactions({ data: { ...deps, openOnly: open } }), getReference()])
+    return { rows, ref }
+  },
   component: Transactions,
 })
 
@@ -28,11 +28,12 @@ function Transactions() {
   const navigate = Route.useNavigate()
   const tab = (label: string, next: z.infer<typeof search>) => {
     const active = s.open === next.open && s.direction === next.direction
+    const filters = pickFilters(s)
     return (
       <button
         key={label}
         className={`rounded-full px-3.5 py-1 text-[13px] font-medium transition ${active ? 'bg-surface text-ink shadow-sm' : 'text-ink-2 hover:text-ink'}`}
-        onClick={() => navigate({ search: next })}
+        onClick={() => navigate({ search: { ...filters, ...next } })}
       >
         {label}
       </button>
@@ -41,6 +42,7 @@ function Transactions() {
   return (
     <>
       <PageHeader title="Transactions" sub="Every invoice, bill, cash advance and reimbursement, from the web and WhatsApp." />
+      <FilterBar value={pickFilters(s)} lists={ref} onChange={(f) => navigate({ search: (prev) => ({ ...prev, ...f }) })} />
       <div className="space-y-10">
         <Section
           title="Activity"
