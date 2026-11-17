@@ -25,7 +25,7 @@ import { filterSearch, pickFilters } from '#/lib/filters'
 
 const TABS = [
   ['all', 'All'],
-  ['request', 'Advance Request'],
+  ['request', 'Waiting approval'],
   ['unpaid', 'Approved, unpaid'],
   ['paid', 'Paid'],
   ['settled', 'Done Settlement'],
@@ -62,7 +62,7 @@ function stage(t: TransactionRow): Exclude<Tab, 'all'> | 'void' {
   return t.outstanding !== 0 ? 'unpaid' : 'paid'
 }
 const STAGE_PILL = {
-  request: <span className="pill-warn">Advance Request</span>,
+  request: <span className="pill-warn">Waiting approval</span>,
   unpaid: <span className="pill-neutral">Approved</span>,
   paid: <span className="pill-good">Paid</span>,
   settled: <span className="pill-good">Done Settlement</span>,
