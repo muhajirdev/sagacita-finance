@@ -4,18 +4,21 @@ import { useState } from 'react'
 
 import { MONTHS, Modal, PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
-import { getEmployees, getPayroll, saveEmployeeFn, savePayrollFn, setPayrollStatusFn } from '#/server/pages'
+import { getEmployees, getMedicalClaims, getPayroll, medicalClaimFn, saveEmployeeFn, savePayrollFn, setPayrollStatusFn } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/empopex')({
   validateSearch: z.object({ year: z.coerce.number().int().optional() }),
   loaderDeps: ({ search }) => ({ year: search.year }),
-  loader: async ({ deps }) => ({ ...(await getPayroll({ data: { year: deps.year } })), employees: await getEmployees() }),
+  loader: async ({ deps }) => {
+    const payroll = await getPayroll({ data: { year: deps.year } })
+    return { ...payroll, employees: await getEmployees(), claims: await getMedicalClaims({ data: { year: payroll.year } }) }
+  },
   component: EmployeeOpex,
 })
 
 function EmployeeOpex() {
-  const { year, rows, divisions, employees, canApprove } = Route.useLoaderData()
+  const { year, rows, divisions, employees, canApprove, claims } = Route.useLoaderData()
   const router = useRouter()
   const navigate = Route.useNavigate()
   const [open, setOpen] = useState(false)
@@ -139,6 +142,7 @@ function EmployeeOpex() {
       </div>
       <p className="mt-3 text-[12px] text-muted">Division columns are net salary. BPJS and PPh are the company totals across divisions. HR enters each month, the BOD approves it, and an approved month is locked.</p>
 
+      <MedicalClaims claims={claims} employees={employees} year={year} />
       <Employees employees={employees} divisions={divisions} />
 
       {open && (
@@ -391,5 +395,96 @@ function Employees({ employees, divisions }: { employees: Employee[]; divisions:
         </Modal>
       )}
     </>
+  )
+}
+
+function MedicalClaims({
+  claims,
+  employees,
+  year,
+}: {
+  claims: Awaited<ReturnType<typeof getMedicalClaims>>
+  employees: Employee[]
+  year: number
+}) {
+  const router = useRouter()
+  const state = (c: (typeof claims)[number]) =>
+    c.status === 'draft' ? (
+      <span className="pill-warn">Waiting approval</span>
+    ) : c.outstanding <= 0 ? (
+      <span className="pill-good">Paid</span>
+    ) : (
+      <span className="pill-neutral">Approved, unpaid</span>
+    )
+  return (
+    <section className="mt-10">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-[15px] font-semibold">
+          Medical reimbursement · {year} · {rp(claims.reduce((a, c) => a + c.total, 0))}
+        </h2>
+        <button
+          className="btn-ghost"
+          onClick={async () => {
+            const v = await ui.prompt(
+              'Medical claim',
+              [
+                {
+                  name: 'employeeId',
+                  label: 'Employee',
+                  type: 'select',
+                  options: employees.filter((e) => !e.endDate).map((e) => ({ value: String(e.id), label: e.name })),
+                },
+                { name: 'amount', label: 'Amount on the receipt (IDR)', type: 'number', min: 1 },
+                { name: 'date', label: 'Receipt date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                { name: 'description', label: 'Clinic / note', required: false },
+              ],
+              { message: 'Goes to Approvals like any expense, then into the payment run.', submitLabel: 'Submit claim' },
+            )
+            if (!v) return
+            if (
+              await ui.run(
+                () =>
+                  medicalClaimFn({ data: { employeeId: Number(v.employeeId), amount: Number(v.amount), date: v.date, description: v.description } }),
+                'Claim submitted for approval',
+              )
+            )
+              await router.invalidate()
+          }}
+        >
+          + Medical claim
+        </button>
+      </div>
+      <div className="card overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="th">Date</th>
+              <th className="th">Employee</th>
+              <th className="th">Note</th>
+              <th className="th num">Amount</th>
+              <th className="th">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {claims.map((c) => (
+              <tr key={c.id}>
+                <td className="td whitespace-nowrap">{c.issue_date}</td>
+                <td className="td">{c.party ?? '—'}</td>
+                <td className="td text-ink-2">{(c.description ?? '').replace(/^Medical claim: /, '')}</td>
+                <td className="td num">{rp(c.total)}</td>
+                <td className="td">{state(c)}</td>
+              </tr>
+            ))}
+            {claims.length === 0 && (
+              <tr>
+                <td className="td text-muted" colSpan={5}>
+                  No medical claims in {year}.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
