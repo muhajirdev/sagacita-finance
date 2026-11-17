@@ -17,6 +17,7 @@ import {
   listDivisions,
   log,
   recordPayroll,
+  setPayrollMonthStatus,
   listParties,
   listProjects,
   listTransactions,
@@ -232,7 +233,7 @@ export const getCashflow = createServerFn()
 export const getPayroll = createServerFn()
   .validator(yearSchema)
   .handler(async ({ data }) => {
-    await requireRole('owner', 'hr')
+    const me = await requireRole('owner', 'hr')
     const db = getDb()
     const latest = await db.select({ p: sql<string | null>`max(${payrollMonths.period})` }).from(payrollMonths).get()
     const year = data.year ?? (latest?.p ? Number(latest.p.slice(0, 4)) : new Date().getFullYear())
@@ -241,7 +242,14 @@ export const getPayroll = createServerFn()
       .from(payrollMonths)
       .where(like(payrollMonths.period, `${year}-%`))
       .orderBy(asc(payrollMonths.period))
-    return { year, rows, divisions: await listDivisions(db) }
+    return { year, rows, divisions: await listDivisions(db), canApprove: me.role === 'owner' }
+  })
+
+export const setPayrollStatusFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), status: z.enum(['draft', 'approved']) }))
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner')
+    return setPayrollMonthStatus(getDb(), user.email, data.period, data.status)
   })
 
 export const savePayrollFn = createServerFn({ method: 'POST' })

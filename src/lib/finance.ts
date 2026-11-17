@@ -997,6 +997,7 @@ export async function payrollSummary(db: Db, year: number) {
       bpjsKes: payrollMonths.bpjsKes,
       pph21: payrollMonths.pph21,
       headcount: payrollMonths.headcount,
+      status: payrollMonths.status,
     })
     .from(payrollMonths)
     .innerJoin(divisions, eq(divisions.id, payrollMonths.divisionId))
@@ -1032,6 +1033,12 @@ export async function recordPayroll(
   },
 ) {
   if (!/^\d{4}-\d{2}$/.test(input.period)) throw new FinanceError('period must be YYYY-MM')
+  const locked = await db
+    .select({ id: payrollMonths.id })
+    .from(payrollMonths)
+    .where(and(eq(payrollMonths.period, input.period), eq(payrollMonths.status, 'approved')))
+    .get()
+  if (locked) throw new FinanceError(`${input.period} payroll is approved and locked. The owner must reopen it first.`)
   const values = {
     period: input.period,
     divisionId: input.divisionId,
@@ -1049,6 +1056,24 @@ export async function recordPayroll(
     .returning()
   await log(db, actor, 'upsert', 'payroll_months', row.id, values)
   return row
+}
+
+/** Approves (locks) or reopens one month's payroll, all divisions together. Owner (BOD) only, enforced by the caller. */
+export async function setPayrollMonthStatus(db: Db, actor: Actor, period: string, status: 'draft' | 'approved') {
+  if (!/^\d{4}-\d{2}$/.test(period)) throw new FinanceError('period must be YYYY-MM')
+  const approved = status === 'approved'
+  const rows = await db
+    .update(payrollMonths)
+    .set({
+      status,
+      approvedBy: approved ? String(actor) : null,
+      approvedAt: approved ? new Date().toISOString() : null,
+    })
+    .where(eq(payrollMonths.period, period))
+    .returning({ id: payrollMonths.id })
+  if (rows.length === 0) throw new FinanceError(`no payroll entered for ${period}`)
+  for (const r of rows) await log(db, actor, approved ? 'approve' : 'reopen', 'payroll_months', r.id, { period, status })
+  return { period, status, rows: rows.length }
 }
 
 // ------------------------------------------------------------------ documents (R2)
