@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 import { MONTHS, Modal, PageHeader, Stat } from '#/components/ui'
 import { rp, rpShort } from '#/lib/format'
-import { getEmployees, getPayroll, saveEmployeeFn, savePayrollFn } from '#/server/pages'
+import { getEmployees, getPayroll, saveEmployeeFn, savePayrollFn, setPayrollStatusFn } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/empopex')({
@@ -15,7 +15,7 @@ export const Route = createFileRoute('/_app/empopex')({
 })
 
 function EmployeeOpex() {
-  const { year, rows, divisions, employees } = Route.useLoaderData()
+  const { year, rows, divisions, employees, canApprove } = Route.useLoaderData()
   const router = useRouter()
   const navigate = Route.useNavigate()
   const [open, setOpen] = useState(false)
@@ -65,6 +65,7 @@ function EmployeeOpex() {
               <th className="th num">BPJS Kes</th>
               <th className="th num">PPh</th>
               <th className="th num">Total</th>
+              <th className="th">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -83,12 +84,52 @@ function EmployeeOpex() {
                   <td className="td num">{rp(s('bpjsKes'))}</td>
                   <td className="td num">{rp(s('pph21'))}</td>
                   <td className="td num font-semibold">{rp(m.reduce((a, r) => a + cost(r), 0))}</td>
+                  <td className="td whitespace-nowrap">
+                    {(() => {
+                      const approved = m.every((r) => r.status === 'approved')
+                      const label = MONTHS[Number(period.slice(5)) - 1] + ' ' + period.slice(0, 4)
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className={approved ? 'pill-good' : 'pill-warn'}>
+                            {approved ? 'Approved' : 'Waiting BOD'}
+                          </span>
+                          {canApprove && (
+                            <button
+                              className="btn-ghost"
+                              title={approved ? m[0]?.approvedBy ? `Approved by ${m[0].approvedBy}` : '' : ''}
+                              onClick={async () => {
+                                const ok = await ui.confirm(
+                                  approved ? `Reopen ${label} payroll?` : `Approve ${label} payroll?`,
+                                  {
+                                    message: approved
+                                      ? 'HR can edit it again. It will need approval again.'
+                                      : `Total ${rp(m.reduce((a, r) => a + cost(r), 0))}. The month is locked after approval.`,
+                                    confirmLabel: approved ? 'Reopen' : 'Approve',
+                                  },
+                                )
+                                if (!ok) return
+                                if (
+                                  await ui.run(
+                                    () => setPayrollStatusFn({ data: { period, status: approved ? 'draft' : 'approved' } }),
+                                    approved ? 'Reopened' : 'Approved',
+                                  )
+                                )
+                                  await router.invalidate()
+                              }}
+                            >
+                              {approved ? 'Reopen' : 'Approve'}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </td>
                 </tr>
               )
             })}
             {periods.length === 0 && (
               <tr>
-                <td className="td text-muted" colSpan={divisions.length + 5}>
+                <td className="td text-muted" colSpan={divisions.length + 6}>
                   No payroll entered yet. Use "Enter month".
                 </td>
               </tr>
@@ -96,7 +137,7 @@ function EmployeeOpex() {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-[12px] text-muted">Division columns are net salary. BPJS and PPh are the company totals across divisions.</p>
+      <p className="mt-3 text-[12px] text-muted">Division columns are net salary. BPJS and PPh are the company totals across divisions. HR enters each month, the BOD approves it, and an approved month is locked.</p>
 
       <Employees employees={employees} divisions={divisions} />
 

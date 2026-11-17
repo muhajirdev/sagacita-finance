@@ -86,7 +86,7 @@ Tables:
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
   documents     files in R2: entity (transaction|party|project), entity_id, kind, filename, content_type, size. URL = <app>/files/<id>
   activity_log  audit log, who changed what: at, actor, action, entity, entity_id, data (json), source (web|mcp|import), batch_id
-  payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount. Cost = sum of the four.
+  payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount, status (draft | approved by the BOD on the web; approved months are locked). Cost = sum of the four.
   (users and employees are not readable here: HR data)
 
 Rules:
@@ -596,7 +596,7 @@ function createServer(env: Env, appUrl: string) {
     'record_payroll',
     {
       description:
-        "Save one month's payroll totals for one division (from HR's payroll Excel). Saving the same month + division again replaces it. divisionId from list_reference.",
+        "Save one month's payroll totals for one division (from HR's payroll Excel). Saving the same month + division again replaces it. Months the BOD has approved are locked (status approved) and refuse changes until the owner reopens them on the web. divisionId from list_reference.",
       inputSchema: {
         actor: actorField,
         period: z.string().describe('YYYY-MM'),

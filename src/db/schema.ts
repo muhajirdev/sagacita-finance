@@ -379,6 +379,10 @@ export const payrollMonths = sqliteTable(
     pph21: integer('pph21').notNull().default(0),
     headcount: integer('headcount'),
     notes: text('notes'),
+    // BOD (owner) approves a whole month; approved months are locked until reopened.
+    status: text('status', { enum: ['draft', 'approved'] }).notNull().default('draft'),
+    approvedBy: text('approved_by'),
+    approvedAt: text('approved_at'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('payroll_period_division').on(t.period, t.divisionId)],
