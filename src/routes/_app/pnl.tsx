@@ -2,15 +2,21 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { PageHeader } from '#/components/ui'
-import { Select, ui } from '#/components/dialogs'
+import { ui } from '#/components/dialogs'
+import { FilterBar } from '#/components/filter-bar'
+import { filterSearch, pickFilters, rangeLabel } from '#/lib/filters'
+import { getReference } from '#/server/fns'
 import { rp } from '#/lib/format'
 import { getPnl } from '#/server/pages'
 import type { Cell } from 'write-excel-file'
 
 export const Route = createFileRoute('/_app/pnl')({
-  validateSearch: z.object({ year: z.coerce.number().int().optional() }),
-  loaderDeps: ({ search }) => ({ year: search.year }),
-  loader: ({ deps }) => getPnl({ data: { year: deps.year } }),
+  validateSearch: filterSearch,
+  loaderDeps: ({ search }) => pickFilters(search),
+  loader: async ({ deps }) => {
+    const [d, ref] = await Promise.all([getPnl({ data: deps }), getReference()])
+    return { ...d, ref, label: rangeLabel(deps) }
+  },
   component: Pnl,
 })
 
@@ -35,14 +41,12 @@ function Row({ label, value, strong, indent }: { label: string; value: number; s
 type PnlData = Awaited<ReturnType<typeof getPnl>>
 
 /** Excel download laid out like the client's statement-of-financial file: a "PL" summary sheet and a "Notes PL" sheet by account. */
-async function downloadXlsx(d: PnlData) {
+async function downloadXlsx(d: PnlData & { label: string }) {
   const { default: writeXlsxFile } = await import('write-excel-file')
   const t = d.totals
   const now = new Date()
-  const asOf =
-    d.year < now.getFullYear()
-      ? `DECEMBER 31, ${d.year}`
-      : now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
+  const end = d.to && d.to < now.toISOString().slice(0, 10) ? new Date(d.to + 'T00:00:00') : now
+  const asOf = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
   const num = (v: number, bold = false): Cell => ({
     value: Math.round(v),
     type: Number,
@@ -53,7 +57,7 @@ async function downloadXlsx(d: PnlData) {
   const head = (title: string): Cell[][] => [
     [txt(d.company.name.toUpperCase(), true)],
     [txt(`${title} AS ${asOf}`, true)],
-    [null, txt(String(d.year), true)],
+    [null, txt(d.label, true)],
   ]
   const pl: Cell[][] = [
     ...head('STATEMENTS OF PROFIT OR LOSS'),
@@ -70,7 +74,7 @@ async function downloadXlsx(d: PnlData) {
   const notes: Cell[][] = [...head('NOTES TO FINANCIAL STATEMENTS')]
   const block = (title: string, groups: string[], totalLabel: string, sign: (g: string) => number = () => 1) => {
     const lines = d.lines.filter((l) => groups.includes(l.group))
-    notes.push([], [txt(title, true), txt(String(d.year), true)])
+    notes.push([], [txt(title, true), txt(d.label, true)])
     for (const l of lines) notes.push([txt(l.name), num(l.amount * sign(l.group))])
     notes.push([
       txt(totalLabel, true),
@@ -91,13 +95,14 @@ async function downloadXlsx(d: PnlData) {
   await writeXlsxFile([pl, notes], {
     sheets: ['PL', 'Notes PL'],
     columns: [cols, cols],
-    fileName: `PL ${d.company.code ?? 'SRI'} ${d.year}.xlsx`,
+    fileName: `PL ${d.company.code ?? 'SRI'} ${d.label}.xlsx`,
   })
 }
 
 function Pnl() {
   const d = Route.useLoaderData()
   const navigate = Route.useNavigate()
+  const search = Route.useSearch()
   const t = d.totals
   const total: Record<string, [string, number][]> = {
     cost_of_service: [['Gross Profit', t.grossProfit]],
@@ -115,19 +120,13 @@ function Pnl() {
             <button className="btn" onClick={() => downloadXlsx(d).catch(ui.error)}>
               Download Excel
             </button>
-            <div className="w-28">
-              <Select
-                value={String(d.year)}
-                onChange={(v) => navigate({ search: { year: Number(v) } })}
-                options={d.years.map((y) => ({
-                  value: String(y),
-                  label: String(y),
-                }))}
-              />
-            </div>
           </div>
         }
       />
+      <FilterBar value={pickFilters(search)} lists={d.ref} onChange={(f) => navigate({ search: (prev) => ({ ...prev, ...f }) })} />
+      <p className="-mt-2 mb-4 text-[13px] text-muted">
+        {d.label}. Payroll is included unless a client or project is picked (it isn't tied to projects).
+      </p>
       {d.uncategorised !== 0 && (
         <p className="mb-4 text-[13px] text-warn">
           {rp(d.uncategorised)} has no COA yet ("Not categorised"). Pick the COA on the Expenses page to complete the statement.

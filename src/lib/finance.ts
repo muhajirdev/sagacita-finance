@@ -987,26 +987,39 @@ export type PnlLine = { group: string; code: string | null; name: string; amount
  * Revenue and costs = dpp of non-void transactions by account (issue date). Payroll from Employee OpEx goes to
  * the Salary, BPJS and PPh 21 (Employee) accounts. Rows with no account yet show as "Not categorised".
  */
-export async function pnlByAccount(d1: D1Database, companyId: number, year: number) {
-  const y = String(year)
+/** P&L by account for a year, or for a filter (date range, division, client, project). */
+export async function pnlByAccount(d1: D1Database, companyId: number, yearOrFilter: number | ListFilter) {
+  const f: ListFilter = typeof yearOrFilter === 'number' ? { from: `${yearOrFilter}-01-01`, to: `${yearOrFilter}-12-31` } : yearOrFilter
+  const where: string[] = []
+  const args: unknown[] = [companyId]
+  if (f.from) (where.push('t.issue_date >= ?'), args.push(f.from))
+  if (f.to) (where.push('t.issue_date <= ?'), args.push(f.to))
+  if (f.divisionId) (where.push('coalesce(pr.division_id, t.division_id) = ?'), args.push(f.divisionId))
+  if (f.clientId) (where.push('pr.client_id = ?'), args.push(f.clientId))
+  if (f.projectCode) (where.push('pr.code = ?'), args.push(f.projectCode))
   const rows = (
     await d1
       .prepare(
         `select a."group" grp, a.code, a.name, a.sort_order so, t.direction, case when t.project_id is null then 0 else 1 end proj, sum(t.dpp) v
-         from transactions t left join accounts a on a.id = t.account_id
-         where t.company_id = ? and t.status != 'void' and t.kind != 'tax_payment' and substr(t.issue_date, 1, 4) = ?
+         from transactions t left join accounts a on a.id = t.account_id left join projects pr on pr.id = t.project_id
+         where t.company_id = ? and t.status != 'void' and t.kind != 'tax_payment'${where.map((w) => ' and ' + w).join('')}
          group by 1, 2, 3, 4, 5, 6 having sum(t.dpp) != 0`,
       )
-      .bind(companyId, y)
+      .bind(...args)
       .all<{ grp: string | null; code: string | null; name: string | null; so: number | null; direction: string; proj: number; v: number }>()
   ).results
-  const pay = await d1
-    .prepare(
-      `select coalesce(sum(p.net_salary), 0) salary, coalesce(sum(p.bpjs_tk + p.bpjs_kes), 0) bpjs, coalesce(sum(p.pph21), 0) pph21
-       from payroll_months p join divisions d on d.id = p.division_id where d.company_id = ? and substr(p.period, 1, 4) = ?`,
-    )
-    .bind(companyId, y)
-    .first<{ salary: number; bpjs: number; pph21: number }>()
+  // Payroll is per division and month, so it follows the range and division but not a client or project filter.
+  const pay =
+    f.clientId || f.projectCode
+      ? null
+      : await d1
+          .prepare(
+            `select coalesce(sum(p.net_salary), 0) salary, coalesce(sum(p.bpjs_tk + p.bpjs_kes), 0) bpjs, coalesce(sum(p.pph21), 0) pph21
+             from payroll_months p join divisions d on d.id = p.division_id
+             where d.company_id = ? and p.period >= ? and p.period <= ?${f.divisionId ? ' and p.division_id = ?' : ''}`,
+          )
+          .bind(companyId, f.from?.slice(0, 7) ?? '0000', f.to?.slice(0, 7) ?? '9999', ...(f.divisionId ? [f.divisionId] : []))
+          .first<{ salary: number; bpjs: number; pph21: number }>()
   const acc = (
     await d1.prepare(`select code, name, "group" grp, sort_order so from accounts`).all<{ code: string; name: string; grp: string; so: number }>()
   ).results

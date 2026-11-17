@@ -6,14 +6,17 @@ import { Select, ui } from '#/components/dialogs'
 import { TAX_TYPES } from '#/db/schema'
 import { rp } from '#/lib/format'
 import { getTax, recordTaxPaymentFn } from '#/server/pages'
+import { FilterBar } from '#/components/filter-bar'
+import { rangeLabel } from '#/lib/filters'
 
 export const Route = createFileRoute('/_app/tax')({
   validateSearch: z.object({
     year: z.coerce.number().int().optional(),
+    period: z.string().regex(/^(q[1-4]|m(0[1-9]|1[0-2]))$/).optional(),
     company: z.coerce.number().int().optional(),
   }),
-  loaderDeps: ({ search }) => ({ year: search.year, company: search.company }),
-  loader: ({ deps }) => getTax({ data: { year: deps.year, companyId: deps.company } }),
+  loaderDeps: ({ search }) => ({ year: search.year, period: search.period, company: search.company }),
+  loader: ({ deps }) => getTax({ data: { year: deps.year, period: deps.period, companyId: deps.company } }),
   component: Tax,
 })
 
@@ -106,19 +109,19 @@ function Tax() {
         <div className="w-32">
           <Select
             value={String(d.companyId)}
-            onChange={(v) => navigate({ search: { year: d.year, company: Number(v) } })}
+            onChange={(v) => navigate({ search: (prev) => ({ ...prev, company: Number(v) }) })}
             options={d.companies.map((c) => ({
               value: String(c.id),
               label: c.code ?? c.name,
             }))}
           />
-          <Select
-            value={String(d.year)}
-            onChange={(v) => navigate({ search: { year: Number(v), company: d.companyId } })}
-            options={d.years.map((y) => ({
-              value: String(y),
-              label: String(y),
-            }))}
+        </div>
+        <div className="-mb-5">
+          <FilterBar
+            value={{ year: d.year, period: d.period }}
+            scope={false}
+            ranges={false}
+            onChange={(f) => navigate({ search: (prev) => ({ ...prev, year: f.year === 'all' ? undefined : f.year, period: f.period }) })}
           />
         </div>
         <div className={`ml-2 text-[13px] ${late.length ? 'text-bad' : 'text-muted'}`}>
@@ -180,7 +183,7 @@ function Tax() {
             {periods.length === 0 && (
               <tr>
                 <td className="td text-muted" colSpan={types.length + 1}>
-                  No tax for this PT in {d.year}.
+                  No tax for this PT in {rangeLabel({ year: d.year, period: d.period })}.
                 </td>
               </tr>
             )}
@@ -188,7 +191,7 @@ function Tax() {
         </table>
       </div>
 
-      <h2 className="mb-3 mt-10 text-[15px] font-semibold">Deposits in {d.year}</h2>
+      <h2 className="mb-3 mt-10 text-[15px] font-semibold">Deposits in {rangeLabel({ year: d.year, period: d.period })}</h2>
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
