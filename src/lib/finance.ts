@@ -769,6 +769,8 @@ export async function recordPayment(
   const amount = Math.round(input.amount ?? open)
   if (amount <= 0 || open === 0) throw new FinanceError('nothing outstanding on this transaction')
   if (amount > open) throw new FinanceError(`amount ${amount} is more than the outstanding ${open}`)
+  if (tx.direction === 'out' && !refund && tx.kind !== 'tax_payment' && !tx.releasedAt && auditSource(db).source !== 'import')
+    throw new FinanceError('the owner has not released this for payment yet (Payment run → Release)')
   const [row] = await db
     .insert(payments)
     .values({
@@ -1630,6 +1632,8 @@ export type TransactionRow = {
   account_id: number | null
   account_code: string | null
   note: string | null
+  released_at: string | null
+  released_by: string | null
   account: string | null
   category: string | null
   description: string | null
@@ -1676,6 +1680,20 @@ export async function listTransactions(d1: D1Database, f: TransactionFilter = {}
 }
 
 /** Unpaid approved bills/advances/reimbursements due by a date: the Wed/Fri payment run. */
+/** Owner picks which approved spend gets paid on the pay date. Finance can only record payment on released rows. */
+export async function releaseTransactions(db: Db, actor: Actor, ids: number[]) {
+  const now = new Date().toISOString()
+  const done: number[] = []
+  for (const id of ids) {
+    const tx = await db.select().from(transactions).where(eq(transactions.id, id)).get()
+    if (!tx || tx.direction !== 'out' || tx.status !== 'approved' || tx.releasedAt) continue
+    await db.update(transactions).set({ releasedAt: now, releasedBy: actor, updatedAt: now }).where(eq(transactions.id, id))
+    await log(db, actor, 'release', 'transactions', id, { releasedAt: now })
+    done.push(id)
+  }
+  return { released: done.length, ids: done }
+}
+
 export async function payablesDue(d1: D1Database, dueBy: string) {
   const { results } = await d1
     .prepare(

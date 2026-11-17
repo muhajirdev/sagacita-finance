@@ -26,6 +26,7 @@ import {
   recordTransaction,
   setTransactionStatus,
   settleAdvance,
+  releaseTransactions,
   listAccounts,
   setTransactionAccount,
   inputInvoiceTax,
@@ -293,6 +294,14 @@ export const recordPaymentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     return recordPayment(getDb(), user.email, { ...data, createdBy: user.id })
+  })
+
+export const releaseFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ids: z.array(z.number().int()).min(1).max(500) }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    if (user.role !== 'owner') throw new Error('only the owner (BOD) can release payments')
+    return releaseTransactions(getDb(), user.email, data.ids)
   })
 
 export const settleAdvanceFn = createServerFn({ method: 'POST' })
