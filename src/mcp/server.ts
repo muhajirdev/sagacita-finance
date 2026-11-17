@@ -50,6 +50,10 @@ import {
   recordPayroll,
   updateTransaction,
   settleAdvance,
+  createCompany,
+  updateCompany,
+  createDivision,
+  updateDivision,
 } from '#/lib/finance'
 
 const GLOSSARY = `Talk to people in the web app's words, not the database's. Database term -> what people call it:
@@ -85,8 +89,8 @@ Tables:
   projects      id, code (project number), name, client_id -> parties, division_id -> divisions, type (retainer|project), status, start_date, end_date
   budget_lines  SOW items: project_id, name, charge (client price), max_expense, asf_amount. ceiling = max_expense + asf_amount
   parties       clients, vendors, employees: kind, name (brand for clients), legal_entity (PT), code (initials in project codes), address, payment_terms_days (TOP), npwp, bank_account
-  divisions     agencies (Sagacita PR, SagaDigital, Arra Comms) -> company_id
-  companies     PTs (tax reporting is per company)
+  divisions     agencies / brands -> company_id (a project's PT comes from its division)
+  companies     PTs: name, code (short name: SRI, SRAB, SKAB, FAB, BRAB), npwp, address. Tax reporting is per company
   opex_budgets  company OpEx: category, fiscal_year, annual_budget, is_fixed. Actual = non-project 'out' transactions with that category
   approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
@@ -263,6 +267,55 @@ function createServer(env: Env, appUrl: string) {
       },
     },
     async ({ actor, ...input }) => safe(() => recordPayment(db, actor, input)),
+  )
+
+  server.registerTool(
+    'create_company',
+    {
+      description: 'Add a PT (legal entity). Then add its divisions (agencies / brands) with create_division. Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        name: z.string().min(1).describe('Full PT name, e.g. "PT Bangun Reputasi Anak Bangsa"'),
+        code: z.string().optional().describe('Short name people use, e.g. BRAB'),
+        npwp: z.string().optional(),
+        address: z.string().optional(),
+      },
+    },
+    async ({ actor, ...input }) => safe(() => createCompany(db, actor, input)),
+  )
+
+  server.registerTool(
+    'update_company',
+    {
+      description: 'Change a PT\'s name, short code, NPWP or address. Confirm first.',
+      inputSchema: {
+        actor: actorField,
+        id: z.number().int(),
+        name: z.string().optional(),
+        code: z.string().optional(),
+        npwp: z.string().optional(),
+        address: z.string().optional(),
+      },
+    },
+    async ({ actor, id, ...input }) => safe(() => updateCompany(db, actor, id, input)),
+  )
+
+  server.registerTool(
+    'create_division',
+    {
+      description: 'Add a division (agency / brand) under a PT. Projects belong to a division, so this decides which PT a project is billed from. Confirm first.',
+      inputSchema: { actor: actorField, companyId: z.number().int(), name: z.string().min(1) },
+    },
+    async ({ actor, ...input }) => safe(() => createDivision(db, actor, input)),
+  )
+
+  server.registerTool(
+    'update_division',
+    {
+      description: 'Rename a division, or move it to another PT (only while it has no projects). Confirm first.',
+      inputSchema: { actor: actorField, id: z.number().int(), name: z.string().optional(), companyId: z.number().int().optional() },
+    },
+    async ({ actor, id, ...input }) => safe(() => updateDivision(db, actor, id, input)),
   )
 
   server.registerTool(

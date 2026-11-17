@@ -26,6 +26,11 @@ import {
   setUserRole,
   updateProject,
   updateTransaction,
+  createCompany,
+  updateCompany,
+  createDivision,
+  updateDivision,
+  listCompanies,
 } from '#/lib/finance'
 
 type Role = (typeof USER_ROLES)[number]
@@ -503,4 +508,48 @@ export const getActivity = createServerFn()
     await requireRole('owner')
     const rows = await listActivity(getDb(), { ...data, limit: 100 })
     return rows.map((r) => ({ ...r, data: r.data == null ? null : JSON.stringify(r.data) }))
+  })
+
+// ---------------------------------------------------------------- companies (PTs) and divisions
+
+export const getCompanies = createServerFn().handler(async () => {
+  await requireRole('owner', 'finance')
+  const db = getDb()
+  const used = await db
+    .select({ divisionId: projects.divisionId, n: sql<number>`count(*)` })
+    .from(projects)
+    .groupBy(projects.divisionId)
+  const n = new Map(used.map((u) => [u.divisionId, Number(u.n)]))
+  const divs = (await listDivisions(db)).map((d) => ({ ...d, projects: n.get(d.id) ?? 0 }))
+  return (await listCompanies(db)).map((c) => ({ ...c, divisions: divs.filter((d) => d.companyId === c.id) }))
+})
+
+const companyFields = z.object({ name: z.string().min(1), code: z.string().nullable(), npwp: z.string().nullable(), address: z.string().nullable() })
+
+export const addCompanyFn = createServerFn({ method: 'POST' })
+  .validator(companyFields)
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'finance')
+    return createCompany(getDb(), user.email, data)
+  })
+
+export const updateCompanyFn = createServerFn({ method: 'POST' })
+  .validator(companyFields.extend({ id: z.number().int() }))
+  .handler(async ({ data: { id, ...rest } }) => {
+    const user = await requireRole('owner', 'finance')
+    return updateCompany(getDb(), user.email, id, rest)
+  })
+
+export const addDivisionFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ companyId: z.number().int(), name: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'finance')
+    return createDivision(getDb(), user.email, data)
+  })
+
+export const renameDivisionFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.number().int(), name: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'finance')
+    return updateDivision(getDb(), user.email, data.id, { name: data.name })
   })

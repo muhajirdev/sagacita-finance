@@ -84,6 +84,64 @@ export async function listDivisions(db: Db) {
     .orderBy(asc(divisions.name))
 }
 
+/** Adds a PT. Divisions (agencies) are added under it with createDivision. */
+export async function createCompany(db: Db, actor: Actor, input: { name: string; code?: string | null; npwp?: string | null; address?: string | null }) {
+  const name = input.name.trim()
+  if (!name) throw new FinanceError('PT name is empty')
+  if (await db.select().from(companies).where(sql`lower(${companies.name}) = lower(${name})`).get()) throw new FinanceError(`${name} already exists`)
+  const [row] = await db
+    .insert(companies)
+    .values({ name, code: input.code?.trim().toUpperCase() || null, npwp: input.npwp?.trim() || null, address: input.address?.trim() || null })
+    .returning()
+  await log(db, actor, 'create', 'companies', row.id, row)
+  return row
+}
+
+export async function updateCompany(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: { name?: string; code?: string | null; npwp?: string | null; address?: string | null },
+) {
+  const set: Partial<typeof companies.$inferInsert> = {}
+  if (input.name !== undefined) set.name = input.name.trim()
+  if (input.code !== undefined) set.code = input.code?.trim().toUpperCase() || null
+  if (input.npwp !== undefined) set.npwp = input.npwp?.trim() || null
+  if (input.address !== undefined) set.address = input.address?.trim() || null
+  const [row] = await db.update(companies).set(set).where(eq(companies.id, id)).returning()
+  if (!row) throw new FinanceError(`company ${id} not found`)
+  await log(db, actor, 'update', 'companies', id, set)
+  return row
+}
+
+/** Adds a division (agency / brand) under a PT. Names are unique across all PTs. */
+export async function createDivision(db: Db, actor: Actor, input: { companyId: number; name: string }) {
+  const name = input.name.trim()
+  if (!name) throw new FinanceError('division name is empty')
+  if (!(await db.select().from(companies).where(eq(companies.id, input.companyId)).get())) throw new FinanceError(`company ${input.companyId} not found`)
+  if (await db.select().from(divisions).where(sql`lower(${divisions.name}) = lower(${name})`).get()) throw new FinanceError(`division ${name} already exists`)
+  const [row] = await db.insert(divisions).values({ companyId: input.companyId, name }).returning()
+  await log(db, actor, 'create', 'divisions', row.id, row)
+  return row
+}
+
+/** Renames a division or moves it to another PT. A division with projects can't move: its projects' history belongs to the old PT. */
+export async function updateDivision(db: Db, actor: Actor, id: number, input: { name?: string; companyId?: number }) {
+  const d = await db.select().from(divisions).where(eq(divisions.id, id)).get()
+  if (!d) throw new FinanceError(`division ${id} not found`)
+  const set: Partial<typeof divisions.$inferInsert> = {}
+  if (input.name?.trim()) set.name = input.name.trim()
+  if (input.companyId && input.companyId !== d.companyId) {
+    const used = await db.select({ id: projects.id }).from(projects).where(eq(projects.divisionId, id)).get()
+    if (used) throw new FinanceError(`division ${d.name} already has projects; add a new division under the other PT instead`)
+    set.companyId = input.companyId
+  }
+  if (!Object.keys(set).length) return d
+  const [row] = await db.update(divisions).set(set).where(eq(divisions.id, id)).returning()
+  await log(db, actor, 'update', 'divisions', id, set)
+  return row
+}
+
 export async function listOpexCategories(db: Db, fiscalYear = new Date().getFullYear()) {
   return db.select().from(opexBudgets).where(eq(opexBudgets.fiscalYear, fiscalYear)).orderBy(asc(opexBudgets.sortOrder))
 }
