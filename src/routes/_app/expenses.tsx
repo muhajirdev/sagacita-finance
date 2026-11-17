@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Modal, PageHeader, Tabs } from '#/components/ui'
 import type { TransactionRow } from '#/lib/finance'
 import { KIND_LABEL, rp } from '#/lib/format'
-import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setStatusFn } from '#/server/fns'
+import { getProject, getProjects, getReference, recordPaymentFn, recordTransactionFn, setStatusFn, settleAdvanceFn } from '#/server/fns'
 import { getExpenses } from '#/server/pages'
 import { Select, ui } from '#/components/dialogs'
 
@@ -29,7 +29,7 @@ function stage(t: TransactionRow): Exclude<Tab, 'all'> | 'void' {
   if (t.status === 'void') return 'void'
   if (t.status === 'settled') return 'settled'
   if (t.status === 'draft') return 'request'
-  return t.outstanding > 0 ? 'unpaid' : 'paid'
+  return t.outstanding !== 0 ? 'unpaid' : 'paid'
 }
 const STAGE_PILL = {
   request: <span className="pill-warn">Advance Request</span>,
@@ -139,7 +139,14 @@ function Expenses() {
                     {t.paid > 0 && t.outstanding > 0 && <div className="text-[12px] text-muted">paid {rp(t.paid)}</div>}
                   </td>
                   <td className="td">{t.requested_by ?? '—'}</td>
-                  <td className="td">{STAGE_PILL[s]}</td>
+                  <td className="td">
+                    {STAGE_PILL[s]}
+                    {t.lpj_due && (
+                      <div className={`mt-0.5 text-[12px] ${t.lpj_due < new Date().toISOString().slice(0, 10) ? 'text-bad' : 'text-muted'}`}>
+                        LPJ due {t.lpj_due}
+                      </div>
+                    )}
+                  </td>
                   <td className="td whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                     {s === 'request' && (
                       <Link to="/approvals" className="btn-ghost mr-1">
@@ -151,14 +158,14 @@ function Expenses() {
                         className="btn-ghost mr-1"
                         onClick={async () => {
                           const v = await ui.prompt(
-                            `Pay ${t.party ?? 'expense'}`,
+                            t.outstanding < 0 ? `Refund from ${t.party ?? 'advance holder'}` : `Pay ${t.party ?? 'expense'}`,
                             [
                               {
                                 name: 'amount',
-                                label: 'Amount paid (IDR)',
+                                label: t.outstanding < 0 ? 'Refund received (IDR)' : 'Amount paid (IDR)',
                                 type: 'number',
                                 min: 1,
-                                defaultValue: String(t.outstanding),
+                                defaultValue: String(Math.abs(t.outstanding)),
                                 hint: `Outstanding ${rp(t.outstanding)}`,
                               },
                               { name: 'date', label: 'Payment date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
@@ -172,8 +179,28 @@ function Expenses() {
                       </button>
                     )}
                     {s === 'paid' && t.kind === 'cash_advance' && (
-                      <button className="btn-ghost mr-1" onClick={() => act(() => setStatusFn({ data: { id: t.id, status: 'settled' } }))}>
-                        Settle
+                      <button
+                        className="btn-ghost mr-1"
+                        onClick={async () => {
+                          const v = await ui.prompt(
+                            `LPJ for ${t.number ?? 'cash advance'}`,
+                            [
+                              {
+                                name: 'spent',
+                                label: 'Actually spent (IDR)',
+                                type: 'number',
+                                min: 0,
+                                defaultValue: String(t.total),
+                                hint: `Advanced ${rp(t.total)}. More = the rest is paid to them, less = they refund the difference. Attach the receipts with "Attach".`,
+                              },
+                              { name: 'date', label: 'LPJ date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+                            ],
+                            { submitLabel: 'Submit LPJ' },
+                          )
+                          if (v) act(() => settleAdvanceFn({ data: { advanceId: t.id, spent: Number(v.spent), date: v.date } }))
+                        }}
+                      >
+                        Submit LPJ
                       </button>
                     )}
                     {t.paid === 0 && s !== 'void' && (

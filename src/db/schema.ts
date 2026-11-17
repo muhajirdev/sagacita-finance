@@ -140,6 +140,7 @@ export const TRANSACTION_KINDS = [
   'vendor_bill', // money out, to a vendor
   'cash_advance', // money out up front, settled later with receipts
   'reimbursement', // money out, paying back someone who spent their own
+  'settlement', // closes a cash advance (LPJ): what was really spent, see advance_id
 ] as const
 
 /** in for client_invoice, out for the rest. Stored so queries never need to know the kinds. */
@@ -175,6 +176,13 @@ export const transactions = sqliteTable(
     partyId: integer('party_id').references(() => parties.id),
     projectId: integer('project_id').references(() => projects.id),
     budgetLineId: integer('budget_line_id').references(() => budgetLines.id),
+    /**
+     * Settlement rows: the cash advance they close. An LPJ writes one row per project with dpp = actual
+     * spent (total 0, the advance already paid it) plus one balance row with dpp = -advance (so the advance
+     * stops counting as cost) and total = spent - advance: positive = still owed to the person,
+     * negative = refund owed to the company.
+     */
+    advanceId: integer('advance_id'),
     /** For rows with no project (company spend): which division it belongs to, if any. */
     divisionId: integer('division_id').references(() => divisions.id),
     /** Company OpEx category for spend that is not on a project: matches opex_budgets.category. */
