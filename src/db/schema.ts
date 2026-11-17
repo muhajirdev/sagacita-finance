@@ -56,6 +56,12 @@ export const divisions = sqliteTable('divisions', {
     .notNull()
     .references(() => companies.id),
   name: text('name').notNull().unique(),
+  /** Printed on this division's client invoices: where the client pays. */
+  bankName: text('bank_name'),
+  bankAccountNumber: text('bank_account_number'),
+  bankAccountName: text('bank_account_name'),
+  /** Logo on the invoice, as a small data: URL (resized in the browser before saving). */
+  logo: text('logo'),
   createdAt: createdAt(),
 })
 

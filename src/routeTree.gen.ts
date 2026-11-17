@@ -35,6 +35,7 @@ import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppVendorsRouteImport } from './routes/_app/vendors'
 import { Route as FilesIdRouteImport } from './routes/files.$id'
+import { Route as InvoicePrintIdRouteImport } from './routes/invoice-print.$id'
 import { Route as LpjReceiptTokenRouteImport } from './routes/lpj-receipt.$token'
 import { Route as LpjTokenRouteImport } from './routes/lpj.$token'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects.index'
@@ -169,6 +170,11 @@ const FilesIdRoute = FilesIdRouteImport.update({
   path: '/files/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvoicePrintIdRoute = InvoicePrintIdRouteImport.update({
+  id: '/invoice-print/$id',
+  path: '/invoice-print/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LpjReceiptTokenRoute = LpjReceiptTokenRouteImport.update({
   id: '/lpj-receipt/$token',
   path: '/lpj-receipt/$token',
@@ -216,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/invoice-print/$id': typeof InvoicePrintIdRoute
   '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
   '/lpj/$token': typeof LpjTokenRoute
   '/projects/$code': typeof AppProjectsCodeRoute
@@ -246,6 +253,7 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/invoice-print/$id': typeof InvoicePrintIdRoute
   '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
   '/lpj/$token': typeof LpjTokenRoute
   '/': typeof AppIndexRoute
@@ -279,6 +287,7 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/vendors': typeof AppVendorsRoute
   '/files/$id': typeof FilesIdRoute
+  '/invoice-print/$id': typeof InvoicePrintIdRoute
   '/lpj-receipt/$token': typeof LpjReceiptTokenRoute
   '/lpj/$token': typeof LpjTokenRoute
   '/_app/': typeof AppIndexRoute
@@ -313,6 +322,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/files/$id'
+    | '/invoice-print/$id'
     | '/lpj-receipt/$token'
     | '/lpj/$token'
     | '/projects/$code'
@@ -343,6 +353,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/files/$id'
+    | '/invoice-print/$id'
     | '/lpj-receipt/$token'
     | '/lpj/$token'
     | '/'
@@ -375,6 +386,7 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/vendors'
     | '/files/$id'
+    | '/invoice-print/$id'
     | '/lpj-receipt/$token'
     | '/lpj/$token'
     | '/_app/'
@@ -387,6 +399,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
   FilesIdRoute: typeof FilesIdRoute
+  InvoicePrintIdRoute: typeof InvoicePrintIdRoute
   LpjReceiptTokenRoute: typeof LpjReceiptTokenRoute
   LpjTokenRoute: typeof LpjTokenRoute
 }
@@ -575,6 +588,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FilesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invoice-print/$id': {
+      id: '/invoice-print/$id'
+      path: '/invoice-print/$id'
+      fullPath: '/invoice-print/$id'
+      preLoaderRoute: typeof InvoicePrintIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lpj-receipt/$token': {
       id: '/lpj-receipt/$token'
       path: '/lpj-receipt/$token'
@@ -667,6 +687,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
   FilesIdRoute: FilesIdRoute,
+  InvoicePrintIdRoute: InvoicePrintIdRoute,
   LpjReceiptTokenRoute: LpjReceiptTokenRoute,
   LpjTokenRoute: LpjTokenRoute,
 }

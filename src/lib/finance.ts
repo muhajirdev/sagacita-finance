@@ -83,7 +83,16 @@ export async function listCompanies(db: Db) {
 
 export async function listDivisions(db: Db) {
   return db
-    .select({ id: divisions.id, name: divisions.name, companyId: divisions.companyId, company: companies.name })
+    .select({
+      id: divisions.id,
+      name: divisions.name,
+      companyId: divisions.companyId,
+      company: companies.name,
+      bankName: divisions.bankName,
+      bankAccountNumber: divisions.bankAccountNumber,
+      bankAccountName: divisions.bankAccountName,
+      hasLogo: sql<number>`${divisions.logo} is not null`,
+    })
     .from(divisions)
     .innerJoin(companies, eq(companies.id, divisions.companyId))
     .orderBy(asc(divisions.name))
@@ -131,11 +140,30 @@ export async function createDivision(db: Db, actor: Actor, input: { companyId: n
 }
 
 /** Renames a division or moves it to another PT. A division with projects can't move: its projects' history belongs to the old PT. */
-export async function updateDivision(db: Db, actor: Actor, id: number, input: { name?: string; companyId?: number }) {
+export async function updateDivision(
+  db: Db,
+  actor: Actor,
+  id: number,
+  input: {
+    name?: string
+    companyId?: number
+    bankName?: string | null
+    bankAccountNumber?: string | null
+    bankAccountName?: string | null
+    /** data: URL of the logo; null removes it. */
+    logo?: string | null
+  },
+) {
   const d = await db.select().from(divisions).where(eq(divisions.id, id)).get()
   if (!d) throw new FinanceError(`division ${id} not found`)
   const set: Partial<typeof divisions.$inferInsert> = {}
   if (input.name?.trim()) set.name = input.name.trim()
+  for (const k of ['bankName', 'bankAccountNumber', 'bankAccountName'] as const) if (input[k] !== undefined) set[k] = input[k]?.trim() || null
+  if (input.logo !== undefined) {
+    if (input.logo && !/^data:image\/(png|jpeg|webp|svg\+xml);base64,/.test(input.logo)) throw new FinanceError('logo must be a PNG, JPEG, WebP or SVG image')
+    if (input.logo && input.logo.length > 400_000) throw new FinanceError('logo is too big; use an image under 300 KB')
+    set.logo = input.logo || null
+  }
   if (input.companyId && input.companyId !== d.companyId) {
     const used = await db.select({ id: projects.id }).from(projects).where(eq(projects.divisionId, id)).get()
     if (used) throw new FinanceError(`division ${d.name} already has projects; add a new division under the other PT instead`)
@@ -143,7 +171,7 @@ export async function updateDivision(db: Db, actor: Actor, id: number, input: { 
   }
   if (!Object.keys(set).length) return d
   const [row] = await db.update(divisions).set(set).where(eq(divisions.id, id)).returning()
-  await log(db, actor, 'update', 'divisions', id, set)
+  await log(db, actor, 'update', 'divisions', id, set.logo ? { ...set, logo: '(image)' } : set)
   return row
 }
 
@@ -643,7 +671,8 @@ export async function recordTransaction(db: Db, actor: Actor, input: RecordTrans
       partyId,
       projectId: project?.id ?? null,
       budgetLineId: input.budgetLineId ?? null,
-      divisionId: project ? null : (input.divisionId ?? null),
+      // Client invoices keep their own division: it picks the bank and logo printed on the invoice. Reports still use the project's.
+      divisionId: project && direction !== 'in' ? null : (input.divisionId ?? null),
       category: input.category || null,
       accountId: input.accountId ?? (direction === 'in' ? await defaultRevenueAccount(db) : null),
       description: input.description || null,
@@ -785,6 +814,8 @@ export async function updateTransaction(
     pph?: number
     requestedBy?: string | null
     attachmentUrl?: string | null
+    /** Client invoices only: the division whose bank and logo go on the invoice. */
+    divisionId?: number | null
   },
 ) {
   const tx = await db.select().from(transactions).where(eq(transactions.id, id)).get()
@@ -807,6 +838,7 @@ export async function updateTransaction(
     set.partyId = party.id
     partyName = party.name
   }
+  if (input.divisionId !== undefined && tx.direction === 'in') set.divisionId = input.divisionId
   for (const k of ['category', 'description', 'number', 'issueDate', 'dueDate', 'requestedBy', 'attachmentUrl'] as const)
     if (input[k] !== undefined) (set as Record<string, unknown>)[k] = input[k] || null
   if (input.dpp !== undefined || input.withPpn !== undefined || input.pphType !== undefined || input.pph !== undefined) {

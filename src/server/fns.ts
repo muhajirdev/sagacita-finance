@@ -165,11 +165,12 @@ export const getReference = createServerFn().handler(async () => {
     vendors: (await listParties(db, 'vendor')).map((v) => ({ id: v.id, name: v.name, bankName: v.bankName, bankAccount: v.bankAccount })),
     accounts: (await listAccounts(db)).filter((a) => a.group !== 'balance'),
     projects: (
-      await env.DB.prepare(`select p.id, p.code, p.name, c.name as client from projects p join parties c on c.id = p.client_id order by p.code`).all<{
+      await env.DB.prepare(`select p.id, p.code, p.name, c.name as client, p.division_id as divisionId from projects p join parties c on c.id = p.client_id order by p.code`).all<{
         id: number
         code: string
         name: string
         client: string
+        divisionId: number
       }>()
     ).results,
   }
@@ -259,6 +260,7 @@ export const recordTransactionFn = createServerFn({ method: 'POST' })
       projectId: z.number().int().nullable().optional(),
       budgetLineId: z.number().int().nullable().optional(),
       companyId: z.number().int().nullable().optional(),
+      divisionId: z.number().int().nullable().optional(),
       partyName: z.string().optional(),
       category: z.string().optional(),
       accountId: z.number().int().nullable().optional(),

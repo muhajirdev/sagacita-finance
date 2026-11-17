@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 
 import { PageHeader } from '#/components/ui'
-import { addCompanyFn, addDivisionFn, getCompanies, renameDivisionFn, updateCompanyFn } from '#/server/pages'
+import { addCompanyFn, addDivisionFn, getCompanies, renameDivisionFn, updateCompanyFn, updateDivisionInvoiceFn } from '#/server/pages'
 import { ui, type PromptField } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/companies')({
@@ -23,6 +23,25 @@ const toData = (v: Record<string, string>) => ({
   npwp: v.npwp?.trim() || null,
   address: v.address?.trim() || null,
 })
+
+/** Logos are stored inline, so shrink them to at most 600 px wide PNG first. */
+async function logoDataUrl(file: File): Promise<string> {
+  if (file.type === 'image/svg+xml') {
+    return new Promise((ok, fail) => {
+      const r = new FileReader()
+      r.onload = () => ok(String(r.result))
+      r.onerror = () => fail(r.error)
+      r.readAsDataURL(file)
+    })
+  }
+  const img = await createImageBitmap(file)
+  const scale = Math.min(1, 600 / img.width, 200 / img.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(img.width * scale)
+  canvas.height = Math.round(img.height * scale)
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/png')
+}
 
 function Companies() {
   const companies = Route.useLoaderData()
@@ -71,8 +90,59 @@ function Companies() {
             <div className="mt-4 divide-y divide-line border-t border-line">
               {c.divisions.map((d) => (
                 <div key={d.id} className="flex items-center gap-3 py-2 text-[13px]">
-                  <div className="flex-1">{d.name}</div>
+                  <div className="min-w-0 flex-1">
+                    {d.name}
+                    <div className="text-[12px] text-muted">
+                      {d.bankAccountNumber ? `${d.bankName ?? ''} ${d.bankAccountNumber} a.n. ${d.bankAccountName ?? ''}` : 'No bank account for invoices yet'}
+                      {d.hasLogo ? ' · logo set' : ' · no logo'}
+                    </div>
+                  </div>
                   <div className="text-[12px] text-muted">{d.projects} projects</div>
+                  <button
+                    className="btn-ghost"
+                    onClick={async () => {
+                      const v = await ui.prompt(
+                        `Invoice details for ${d.name}`,
+                        [
+                          { name: 'bankName', label: 'Bank', defaultValue: d.bankName ?? '', hint: 'e.g. BCA KCU Sudirman', required: false },
+                          { name: 'bankAccountNumber', label: 'Account number', defaultValue: d.bankAccountNumber ?? '', required: false },
+                          { name: 'bankAccountName', label: 'Account name (a.n.)', defaultValue: d.bankAccountName ?? '', required: false },
+                        ],
+                        { message: 'Printed on PDF invoices of this division.', submitLabel: 'Save' },
+                      )
+                      if (!v) return
+                      await run(
+                        () =>
+                          updateDivisionInvoiceFn({
+                            data: { id: d.id, bankName: v.bankName || null, bankAccountNumber: v.bankAccountNumber || null, bankAccountName: v.bankAccountName || null },
+                          }),
+                        'Saved',
+                      )
+                    }}
+                  >
+                    Bank
+                  </button>
+                  <label className="btn-ghost cursor-pointer">
+                    Logo
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        e.target.value = ''
+                        if (!file) return
+                        const logo = await logoDataUrl(file)
+                        await run(
+                          () =>
+                            updateDivisionInvoiceFn({
+                              data: { id: d.id, bankName: d.bankName, bankAccountNumber: d.bankAccountNumber, bankAccountName: d.bankAccountName, logo },
+                            }),
+                          'Logo saved',
+                        )
+                      }}
+                    />
+                  </label>
                   <button
                     className="btn-ghost"
                     onClick={async () => {
