@@ -2,9 +2,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { PageHeader } from '#/components/ui'
-import { Select } from '#/components/dialogs'
+import { Select, ui } from '#/components/dialogs'
 import { rp } from '#/lib/format'
 import { getPnl } from '#/server/pages'
+import type { Cell } from 'write-excel-file'
 
 export const Route = createFileRoute('/_app/pnl')({
   validateSearch: z.object({ year: z.coerce.number().int().optional() }),
@@ -31,6 +32,69 @@ function Row({ label, value, strong, indent }: { label: string; value: number; s
   )
 }
 
+type PnlData = Awaited<ReturnType<typeof getPnl>>
+
+/** Excel download laid out like the client's statement-of-financial file: a "PL" summary sheet and a "Notes PL" sheet by account. */
+async function downloadXlsx(d: PnlData) {
+  const { default: writeXlsxFile } = await import('write-excel-file')
+  const t = d.totals
+  const now = new Date()
+  const asOf =
+    d.year < now.getFullYear()
+      ? `DECEMBER 31, ${d.year}`
+      : now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
+  const num = (v: number, bold = false): Cell => ({
+    value: Math.round(v),
+    type: Number,
+    format: '#,##0;(#,##0)',
+    fontWeight: bold ? 'bold' : undefined,
+  })
+  const txt = (v: string, bold = false): Cell => ({ value: v, fontWeight: bold ? 'bold' : undefined })
+  const head = (title: string): Cell[][] => [
+    [txt(d.company.name.toUpperCase(), true)],
+    [txt(`${title} AS ${asOf}`, true)],
+    [null, txt(String(d.year), true)],
+  ]
+  const pl: Cell[][] = [
+    ...head('STATEMENTS OF PROFIT OR LOSS'),
+    [txt('Revenue'), num(t.revenue)],
+    [txt('Cost Of Service'), num(t.costOfService)],
+    [txt('Gross Profit', true), num(t.grossProfit, true)],
+    [txt('Operating Expenses'), num(t.operatingExpenses)],
+    [txt('Operating Profit', true), num(t.operatingProfit, true)],
+    [txt('Other Income ( expenses )'), num(t.other)],
+    [txt('Profit Before Income Tax', true), num(t.beforeTax, true)],
+    [txt('PPh Final PP 55'), num(t.incomeTax)],
+    [txt('Net Profit', true), num(t.netProfit, true)],
+  ]
+  const notes: Cell[][] = [...head('NOTES TO FINANCIAL STATEMENTS')]
+  const block = (title: string, groups: string[], totalLabel: string, sign: (g: string) => number = () => 1) => {
+    const lines = d.lines.filter((l) => groups.includes(l.group))
+    notes.push([], [txt(title, true), txt(String(d.year), true)])
+    for (const l of lines) notes.push([txt(l.name), num(l.amount * sign(l.group))])
+    notes.push([
+      txt(totalLabel, true),
+      num(
+        lines.reduce((a, l) => a + l.amount * sign(l.group), 0),
+        true,
+      ),
+    ])
+  }
+  block('SERVICE REVENUE', ['revenue'], 'TOTAL SERVICE REVENUE')
+  block('COST OF REVENUE', ['cost_of_service'], 'TOTAL COST OF REVENUE')
+  block('OPERATING EXPENSE', ['operating_expense'], 'TOTAL OPERATING EXPENSES')
+  block('OTHER INCOME (EXPENSE)', ['other_income', 'other_expense'], 'TOTAL OTHER INCOME (EXPENSES)', (g) =>
+    g === 'other_expense' ? -1 : 1,
+  )
+  block('INCOME TAX', ['income_tax'], 'TOTAL INCOME TAX')
+  const cols = [{ width: 60 }, { width: 22 }]
+  await writeXlsxFile([pl, notes], {
+    sheets: ['PL', 'Notes PL'],
+    columns: [cols, cols],
+    fileName: `PL ${d.company.code ?? 'SRI'} ${d.year}.xlsx`,
+  })
+}
+
 function Pnl() {
   const d = Route.useLoaderData()
   const navigate = Route.useNavigate()
@@ -47,15 +111,20 @@ function Pnl() {
         title="Profit & Loss"
         sub={`${d.company.name}. Grouped by chart of accounts (COA), by invoice / bill date. Payroll comes from Employee OpEx.`}
         right={
-          <div className="w-28">
-            <Select
-              value={String(d.year)}
-              onChange={(v) => navigate({ search: { year: Number(v) } })}
-              options={d.years.map((y) => ({
-                value: String(y),
-                label: String(y),
-              }))}
-            />
+          <div className="flex items-center gap-3">
+            <button className="btn" onClick={() => downloadXlsx(d).catch(ui.error)}>
+              Download Excel
+            </button>
+            <div className="w-28">
+              <Select
+                value={String(d.year)}
+                onChange={(v) => navigate({ search: { year: Number(v) } })}
+                options={d.years.map((y) => ({
+                  value: String(y),
+                  label: String(y),
+                }))}
+              />
+            </div>
           </div>
         }
       />
