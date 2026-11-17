@@ -400,6 +400,8 @@ export const employees = sqliteTable(
     phone: text('phone'),
     bankAccount: text('bank_account'),
     baseSalary: integer('base_salary'),
+    /** Yearly medical reimbursement allowance (IDR). Null = no limit set. */
+    medicalLimit: integer('medical_limit'),
     startDate: text('start_date'),
     endDate: text('end_date'), // set when the person leaves
     notes: text('notes'),

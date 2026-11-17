@@ -937,6 +937,21 @@ async function defaultRevenueAccount(db: Db) {
 }
 
 /** Sets the COA line on one or more transactions (any status; it only changes how the P&L groups them). */
+export const MEDICAL_TYPES = ['Rawat jalan', 'Rawat inap', 'Kacamata', 'Lainnya'] as const
+
+/** Medical claims used this year per employee: approved (counts against the allowance) and still waiting approval. */
+export async function medicalUsage(d1: D1Database, year: number, employeeName?: string) {
+  const { results } = await d1
+    .prepare(
+      `select party, sum(case when status != 'draft' then dpp else 0 end) used, sum(case when status = 'draft' then dpp else 0 end) pending
+       from v_transactions where kind = 'reimbursement' and status != 'void' and (category like 'Medical%' or account like 'Medical%')
+         and substr(issue_date, 1, 4) = ? ${employeeName ? 'and party = ?' : ''} group by party`,
+    )
+    .bind(...(employeeName ? [String(year), employeeName] : [String(year)]))
+    .all<{ party: string; used: number; pending: number }>()
+  return results
+}
+
 /**
  * HR files an employee's medical claim: a reimbursement to that employee on the Medical COA account, with no project.
  * It then follows the normal expense flow (approval, payment run).
@@ -944,7 +959,7 @@ async function defaultRevenueAccount(db: Db) {
 export async function recordMedicalClaim(
   db: Db,
   actor: Actor,
-  input: { employeeId: number; amount: number; date?: string; description?: string | null; attachmentUrl?: string | null; createdBy?: number | null; source?: 'web' | 'whatsapp' },
+  input: { employeeId: number; amount: number; type?: string | null; date?: string; description?: string | null; attachmentUrl?: string | null; createdBy?: number | null; source?: 'web' | 'whatsapp' },
 ) {
   const emp = await db.select().from(employees).where(eq(employees.id, input.employeeId)).get()
   if (!emp) throw new FinanceError(`employee ${input.employeeId} not found`)
@@ -952,14 +967,35 @@ export async function recordMedicalClaim(
     ? (await db.select().from(divisions).where(eq(divisions.id, emp.divisionId)).get())?.companyId
     : (await db.select().from(companies).orderBy(asc(companies.id)).get())?.id
   const account = await db.select().from(accounts).where(sql`lower(${accounts.name}) like 'medical%'`).get()
+  if (emp.medicalLimit != null) {
+    const year = Number((input.date || today()).slice(0, 4))
+    const u = await db
+      .select({ v: sql<number>`coalesce(sum(${transactions.dpp}), 0)` })
+      .from(transactions)
+      .innerJoin(parties, eq(parties.id, transactions.partyId))
+      .where(
+        and(
+          eq(transactions.kind, 'reimbursement'),
+          sql`${transactions.status} != 'void'`,
+          sql`(${transactions.category} like 'Medical%' or ${transactions.accountId} = ${account?.id ?? -1})`,
+          sql`substr(${transactions.issueDate}, 1, 4) = ${String(year)}`,
+          eq(parties.name, emp.name),
+        ),
+      )
+      .get()
+    const left = emp.medicalLimit - (u?.v ?? 0)
+    if (Math.round(input.amount) > left)
+      throw new FinanceError(`${emp.name} has Rp ${Math.max(left, 0).toLocaleString('id-ID')} medical balance left for ${year} (limit Rp ${emp.medicalLimit.toLocaleString('id-ID')})`)
+  }
+  const type = input.type?.trim() || 'Lainnya'
   return recordTransaction(db, actor, {
     kind: 'reimbursement',
     companyId: company ?? null,
     divisionId: emp.divisionId,
     partyName: emp.name,
     accountId: account?.id ?? null,
-    category: 'Medical',
-    description: `Medical claim: ${input.description?.trim() || emp.name}`,
+    category: `Medical: ${type}`,
+    description: `Medical claim (${type}): ${input.description?.trim() || emp.name}`,
     issueDate: input.date,
     dpp: input.amount,
     withPpn: false,
