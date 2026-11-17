@@ -11,6 +11,8 @@ import { getDb } from '#/lib/db'
 import {
   addBudgetLine,
   createProject,
+  nextProjectCode,
+  listParties,
   findProject,
   listDivisions,
   listCompanies,
@@ -113,7 +115,12 @@ export const getDashboard = createServerFn().handler(async () => {
 export const getReference = createServerFn().handler(async () => {
   await requireUser(true)
   const db = getDb()
-  return { divisions: await listDivisions(db), companies: await listCompanies(db), categories: await listOpexCategories(db) }
+  return {
+    divisions: await listDivisions(db),
+    companies: await listCompanies(db),
+    categories: await listOpexCategories(db),
+    clients: (await listParties(db, 'client')).map((c) => ({ id: c.id, name: c.name, code: c.code })),
+  }
 })
 
 export const getProjects = createServerFn().handler(async () => {
@@ -153,9 +160,9 @@ export const getPayables = createServerFn()
 export const createProjectFn = createServerFn({ method: 'POST' })
   .validator(
     z.object({
-      code: z.string().min(1),
+      code: z.string().optional(),
       name: z.string().min(1),
-      clientName: z.string().min(1),
+      clientId: z.number().int(),
       divisionId: z.number().int(),
       type: z.enum(PROJECT_TYPES),
       startDate: z.string().optional(),
@@ -165,6 +172,14 @@ export const createProjectFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     return createProject(getDb(), user.email, data)
+  })
+
+/** The code a new project for this client would get today, e.g. 26SGC1117. */
+export const nextProjectCodeFn = createServerFn()
+  .validator(z.object({ clientId: z.number().int() }))
+  .handler(async ({ data }) => {
+    await requireUser()
+    return nextProjectCode(getDb(), data.clientId)
   })
 
 export const addBudgetLineFn = createServerFn({ method: 'POST' })

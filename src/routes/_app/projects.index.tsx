@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Modal, PageHeader, StatusPill, TypeBadge, UsageBar, fdate } from '#/components/ui'
 import { updateProjectFn } from '#/server/pages'
 import { rp } from '#/lib/format'
-import { createProjectFn, getProjects, getReference } from '#/server/fns'
+import { createProjectFn, getProjects, getReference, nextProjectCodeFn } from '#/server/fns'
 import { Select, ui } from '#/components/dialogs'
 
 export const Route = createFileRoute('/_app/projects/')({
@@ -21,6 +21,9 @@ function Projects() {
   const [msg, setMsg] = useState('')
   const [open, setOpen] = useState(false)
   const [edit, setEdit] = useState<(typeof projects)[number] | null>(null)
+  const [clientId, setClientId] = useState('')
+  const [code, setCode] = useState('')
+  const clientOptions = ref.clients.map((c) => ({ value: String(c.id), label: c.code ? `${c.name} (${c.code})` : c.name }))
   return (
     <>
       <PageHeader
@@ -40,12 +43,13 @@ function Projects() {
             const form = e.currentTarget
             const f = new FormData(form)
             const s = (k: string) => String(f.get(k) ?? '')
+            if (!clientId) return setMsg('Pick a client from the client list')
             try {
               await createProjectFn({
                 data: {
-                  code: s('code'),
+                  code: code.trim() || undefined,
                   name: s('name'),
-                  clientName: s('clientName'),
+                  clientId: Number(clientId),
                   divisionId: Number(s('divisionId')),
                   type: s('type') as 'retainer' | 'project',
                   startDate: s('startDate') || undefined,
@@ -53,6 +57,8 @@ function Projects() {
                 },
               })
               form.reset()
+              setClientId('')
+              setCode('')
               setMsg('Project created')
               await router.invalidate()
             } catch (err) {
@@ -60,9 +66,27 @@ function Projects() {
             }
           }}
         >
-          <input className="input" name="code" placeholder="Project number" required />
+          <Select
+            value={clientId}
+            placeholder="Client (from client list)"
+            options={clientOptions}
+            onChange={async (v) => {
+              setClientId(v)
+              try {
+                setCode(await nextProjectCodeFn({ data: { clientId: Number(v) } }))
+              } catch (err) {
+                ui.error(err)
+              }
+            }}
+          />
+          <input
+            className="input"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Project code (auto)"
+            title="Filled in from the client: year + client code + month + day, e.g. 26SGC1117. You can change it."
+          />
           <input className="input" name="name" placeholder="Project name" required />
-          <input className="input" name="clientName" placeholder="Client" required />
           <Select name="divisionId" options={ref.divisions.map((d) => ({ value: String(d.id), label: d.name }))} />
           <Select
             name="type"
@@ -154,7 +178,7 @@ function Projects() {
                     id: edit.id,
                     code: s('code'),
                     name: s('name'),
-                    clientName: s('clientName'),
+                    clientId: Number(s('clientId')),
                     divisionId: Number(s('divisionId')),
                     type: s('type') as 'retainer' | 'project',
                     startDate: s('startDate') || null,
@@ -170,7 +194,7 @@ function Projects() {
           >
             <label className="field">
               Client
-              <input className="input" name="clientName" defaultValue={edit.client} required />
+              <Select name="clientId" defaultValue={String(edit.clientId)} options={clientOptions} />
             </label>
             <label className="field">
               Project number
