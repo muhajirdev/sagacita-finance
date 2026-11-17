@@ -453,7 +453,7 @@ function createServer(env: Env, appUrl: string) {
         actor: actorField,
         advanceId: z.number().int().describe('The cash_advance transaction id'),
         lines: z
-          .array(z.object({ projectId: z.number().int().nullable().optional(), amount: z.number().int(), description: z.string().optional() }))
+          .array(z.object({ projectId: z.number().int().nullable().optional(), amount: z.number().int(), description: z.string().optional(), accountId: z.number().int().nullable().optional().describe("COA line from list_accounts; omit to use the advance COA") }))
           .min(1),
         date: z.string().optional().describe('LPJ date, YYYY-MM-DD; default today'),
         number: z.string().optional().describe('Settlement document number, if any'),

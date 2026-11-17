@@ -843,7 +843,7 @@ export async function undoPayment(db: Db, actor: Actor, paymentId: number) {
 
 // ------------------------------------------------------------------ advance settlement (LPJ)
 
-export type SettlementLine = { projectId?: number | null; amount: number; description?: string | null }
+export type SettlementLine = { projectId?: number | null; amount: number; description?: string | null; accountId?: number | null }
 
 /**
  * Closes a paid cash advance with its LPJ (settlement report): what was really spent, per project.
@@ -898,6 +898,7 @@ export async function settleAdvance(
         projectId,
         divisionId,
         category: projectId ? null : adv.category,
+        accountId: l.accountId ?? adv.accountId,
         description: l.description || `LPJ ${adv.number ?? '#' + adv.id}: spent`,
         dpp: amount,
         total: 0,

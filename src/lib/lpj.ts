@@ -124,7 +124,7 @@ export async function lpjSubmissions(db: Db, advanceIds: number[]) {
 }
 
 /** Finance settles an advance from what the employee submitted: one LPJ line per item. */
-export async function settleFromLpj(db: Db, actor: Actor, input: { advanceId: number; date?: string; createdBy?: number | null }) {
+export async function settleFromLpj(db: Db, actor: Actor, input: { advanceId: number; date?: string; accountIds?: (number | null)[]; createdBy?: number | null }) {
   const link = await db.select().from(lpjLinks).where(eq(lpjLinks.advanceId, input.advanceId)).get()
   const items = parseItems(link?.items ?? null)
   if (!link?.submittedAt || !items.length) throw new FinanceError('no LPJ has been submitted through the link for this advance')
@@ -132,7 +132,7 @@ export async function settleFromLpj(db: Db, actor: Actor, input: { advanceId: nu
   if (!adv) throw new FinanceError(`cash advance ${input.advanceId} not found`)
   return settleAdvance(db, actor, {
     advanceId: input.advanceId,
-    lines: items.map((i) => ({ amount: i.amount, description: `${i.date} ${i.description}` })),
+    lines: items.map((i, n) => ({ amount: i.amount, description: `${i.date} ${i.description}`, accountId: input.accountIds?.[n] ?? null })),
     date: input.date,
     note: link.note,
     createdBy: input.createdBy,
