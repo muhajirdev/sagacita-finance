@@ -22,6 +22,7 @@ import { Route as AppCompopexRouteImport } from './routes/_app/compopex'
 import { Route as AppEmpopexRouteImport } from './routes/_app/empopex'
 import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
 import { Route as AppInvoicingRouteImport } from './routes/_app/invoicing'
+import { Route as AppLedgerRouteImport } from './routes/_app/ledger'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
@@ -98,6 +99,11 @@ const AppInvoicingRoute = AppInvoicingRouteImport.update({
   path: '/invoicing',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLedgerRoute = AppLedgerRouteImport.update({
+  id: '/ledger',
+  path: '/ledger',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppLogsRoute = AppLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
   '/invoicing': typeof AppInvoicingRoute
+  '/ledger': typeof AppLedgerRoute
   '/logs': typeof AppLogsRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
   '/invoicing': typeof AppInvoicingRoute
+  '/ledger': typeof AppLedgerRoute
   '/logs': typeof AppLogsRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/_app/empopex': typeof AppEmpopexRoute
   '/_app/expenses': typeof AppExpensesRoute
   '/_app/invoicing': typeof AppInvoicingRoute
+  '/_app/ledger': typeof AppLedgerRoute
   '/_app/logs': typeof AppLogsRoute
   '/_app/payables': typeof AppPayablesRoute
   '/_app/performance': typeof AppPerformanceRoute
@@ -246,6 +255,7 @@ export interface FileRouteTypes {
     | '/empopex'
     | '/expenses'
     | '/invoicing'
+    | '/ledger'
     | '/logs'
     | '/payables'
     | '/performance'
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/empopex'
     | '/expenses'
     | '/invoicing'
+    | '/ledger'
     | '/logs'
     | '/payables'
     | '/performance'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/_app/empopex'
     | '/_app/expenses'
     | '/_app/invoicing'
+    | '/_app/ledger'
     | '/_app/logs'
     | '/_app/payables'
     | '/_app/performance'
@@ -410,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInvoicingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ledger': {
+      id: '/_app/ledger'
+      path: '/ledger'
+      fullPath: '/ledger'
+      preLoaderRoute: typeof AppLedgerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/logs': {
       id: '/_app/logs'
       path: '/logs'
@@ -500,6 +519,7 @@ interface AppRouteChildren {
   AppEmpopexRoute: typeof AppEmpopexRoute
   AppExpensesRoute: typeof AppExpensesRoute
   AppInvoicingRoute: typeof AppInvoicingRoute
+  AppLedgerRoute: typeof AppLedgerRoute
   AppLogsRoute: typeof AppLogsRoute
   AppPayablesRoute: typeof AppPayablesRoute
   AppPerformanceRoute: typeof AppPerformanceRoute
@@ -523,6 +543,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEmpopexRoute: AppEmpopexRoute,
   AppExpensesRoute: AppExpensesRoute,
   AppInvoicingRoute: AppInvoicingRoute,
+  AppLedgerRoute: AppLedgerRoute,
   AppLogsRoute: AppLogsRoute,
   AppPayablesRoute: AppPayablesRoute,
   AppPerformanceRoute: AppPerformanceRoute,
