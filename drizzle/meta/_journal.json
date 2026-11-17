@@ -127,6 +127,13 @@
       "when": 1794907249634,
       "tag": "0017_medical_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794907500866,
+      "tag": "0018_opening_balances",
+      "breakpoints": true
     }
   ]
 }

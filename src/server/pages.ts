@@ -37,6 +37,8 @@ import {
   medicalUsage,
   taxDue,
   pnlByAccount,
+  balanceSheet,
+  setOpeningBalances,
 } from '#/lib/finance'
 
 type Role = (typeof USER_ROLES)[number]
@@ -686,4 +688,41 @@ export const getLedger = createServerFn()
     const f = toListFilter(data)
     const { generalLedger } = await import('#/lib/ledger')
     return { company, from: f.from, to: f.to, ...(await generalLedger(env.DB, company.id, f)) }
+  })
+
+// ---------------------------------------------------------------- balance sheet
+
+/** As of the end of the filter's period (today if that is later, or with no period). */
+export const getBalanceSheet = createServerFn()
+  .validator(filterSearch)
+  .handler(async ({ data }) => {
+    await requireRole('owner', 'finance')
+    const companies = await listCompanies(getDb())
+    const company = companies.find((c) => c.code === 'SRI') ?? companies[0]
+    const today = new Date().toISOString().slice(0, 10)
+    const to = rangeOf(data).to
+    const asOf = to && to < today ? to : today
+    return { company, ...(await balanceSheet(env.DB, company.id, asOf)) }
+  })
+
+const amount = z.number().finite()
+export const setOpeningBalancesFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      companyId: z.number().int(),
+      asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      cash: amount,
+      receivables: amount,
+      otherAssets: amount,
+      payables: amount,
+      taxPayable: amount,
+      otherLiabilities: amount,
+      shareCapital: amount,
+      retainedEarnings: amount,
+    }),
+  )
+  .handler(async ({ data }) => {
+    const user = await requireRole('owner', 'finance')
+    const { companyId, ...rest } = data
+    return setOpeningBalances(getDb(), user.email, companyId, rest)
   })

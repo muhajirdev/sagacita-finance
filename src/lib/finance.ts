@@ -8,6 +8,7 @@ import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import {
   accounts,
   documents,
+  openingBalances,
   employees,
   payrollMonths,
   activityLog,
@@ -1132,6 +1133,148 @@ export async function pnlByAccount(d1: D1Database, companyId: number, yearOrFilt
     uncategorised: all.filter((l) => !l.code).reduce((a, l) => a + l.amount, 0),
   }
 }
+
+// ------------------------------------------------------------------ balance sheet
+
+export type OpeningBalances = Omit<typeof openingBalances.$inferSelect, 'updatedBy' | 'updatedAt' | 'companyId'>
+const OPENING_FIELDS = ['cash', 'receivables', 'otherAssets', 'payables', 'taxPayable', 'otherLiabilities', 'shareCapital', 'retainedEarnings'] as const
+
+/** Saves a PT's opening balance sheet (finance enters it once, e.g. the 31 Dec 2024 closing figures). */
+export async function setOpeningBalances(db: Db, actor: Actor, companyId: number, input: OpeningBalances) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.asOf)) throw new FinanceError('asOf must be a date, YYYY-MM-DD')
+  const values = { asOf: input.asOf, ...Object.fromEntries(OPENING_FIELDS.map((k) => [k, Math.round(Number(input[k]) || 0)])) } as OpeningBalances
+  const row = { companyId, ...values, updatedBy: actor, updatedAt: new Date().toISOString() }
+  const [saved] = await db.insert(openingBalances).values(row).onConflictDoUpdate({ target: openingBalances.companyId, set: row }).returning()
+  await log(db, actor, 'update', 'opening_balances', companyId, saved)
+  return saved
+}
+
+/**
+ * Balance sheet of one PT as of a date: the opening balances plus everything recorded after the opening date.
+ *   Cash & bank   = opening + money in - money out (payments), minus payroll net salary (taken as paid in its month)
+ *   Receivables   = opening + invoices issued - collected
+ *   Advances      = paid cash advances with no LPJ yet as of the date
+ *   Prepaid tax   = PPh withheld by clients on our invoices
+ *   Payables      = opening + bills, reimbursements, LPJ balances and tax deposits issued - paid
+ *   Tax payable   = opening + PPN on invoices - PPN on bills + PPh withheld on bills + payroll PPh 21 / BPJS - deposits
+ *   Equity        = share capital + opening retained earnings + profit since the opening date (the P&L, with
+ *                   advances that have no LPJ yet moved back out of cost, since they still sit in assets)
+ * Same rows as the P&L (non-void, by issue date), so it balances when the opening balances do.
+ */
+export async function balanceSheet(d1: D1Database, companyId: number, asOf: string) {
+  const opening = (await d1
+    .prepare(
+      `select as_of asOf, cash, receivables, other_assets otherAssets, payables, tax_payable taxPayable, other_liabilities otherLiabilities,
+              share_capital shareCapital, retained_earnings retainedEarnings, updated_by updatedBy, updated_at updatedAt
+       from opening_balances where company_id = ?`,
+    )
+    .bind(companyId)
+    .first<OpeningBalances & { updatedBy: string | null; updatedAt: string | null }>()) ?? {
+    asOf: '2024-12-31',
+    cash: 0,
+    receivables: 0,
+    otherAssets: 0,
+    payables: 0,
+    taxPayable: 0,
+    otherLiabilities: 0,
+    shareCapital: 0,
+    retainedEarnings: 0,
+    updatedBy: null,
+    updatedAt: null,
+  }
+  const o = opening.asOf
+  const d = asOf < o ? o : asOf
+  // Issued in (opening, as of]: totals by kind group.
+  const tx = await d1
+    .prepare(
+      `select case when kind = 'client_invoice' then 'in' when kind = 'cash_advance' then 'adv' when kind = 'tax_payment' then 'tax' else 'out' end g,
+              sum(total) total, sum(ppn) ppn, sum(pph) pph
+       from transactions where company_id = ? and status != 'void' and issue_date > ? and issue_date <= ? group by 1`,
+    )
+    .bind(companyId, o, d)
+    .all<{ g: string; total: number; ppn: number; pph: number }>()
+  const t = (g: string) => tx.results.find((r) => r.g === g) ?? { total: 0, ppn: 0, pph: 0 }
+  // Advances issued in range with no LPJ (settlement) dated on or before the as-of date.
+  const adv = await d1
+    .prepare(
+      `select coalesce(sum(a.total), 0) total,
+              coalesce(sum((select coalesce(sum(case when y.direction = a.direction then y.amount else -y.amount end), 0)
+                             from payments y where y.transaction_id = a.id and y.date > ? and y.date <= ?)), 0) paid
+       from transactions a
+       where a.company_id = ? and a.kind = 'cash_advance' and a.status != 'void' and a.issue_date > ? and a.issue_date <= ?
+         and not exists (select 1 from transactions s where s.advance_id = a.id and s.kind = 'settlement' and s.status != 'void' and s.issue_date <= ?)`,
+    )
+    .bind(o, d, companyId, o, d, d)
+    .first<{ total: number; paid: number }>()
+  const unsettled = { total: adv?.total ?? 0, paid: adv?.paid ?? 0 }
+  // Payments dated in (opening, as of], any transaction of this PT. Signed against the transaction's direction.
+  const pay = await d1
+    .prepare(
+      `select case when t.kind = 'client_invoice' then 'in' else 'out' end g,
+              sum(case when y.direction = 'in' then y.amount else -y.amount end) cash
+       from payments y left join transactions t on t.id = y.transaction_id
+       where y.company_id = ? and y.date > ? and y.date <= ? group by 1`,
+    )
+    .bind(companyId, o, d)
+    .all<{ g: string; cash: number }>()
+  const cashIn = pay.results.find((r) => r.g === 'in')?.cash ?? 0 // collections, net of refunds
+  const cashOut = -(pay.results.find((r) => r.g === 'out')?.cash ?? 0) // paid out, net of refunds
+  const payroll = await d1
+    .prepare(
+      `select coalesce(sum(p.net_salary), 0) net, coalesce(sum(p.pph21 + p.bpjs_tk + p.bpjs_kes), 0) tax
+       from payroll_months p join divisions dv on dv.id = p.division_id where dv.company_id = ? and p.period > ? and p.period <= ?`,
+    )
+    .bind(companyId, o.slice(0, 7), d.slice(0, 7))
+    .first<{ net: number; tax: number }>()
+  const pnl = await pnlByAccount(d1, companyId, { from: nextDay(o), to: d })
+
+  const inv = t('in')
+  const out = t('out')
+  const tax = t('tax')
+  const cash = opening.cash + cashIn - cashOut - (payroll?.net ?? 0)
+  const receivables = opening.receivables + inv.total - cashIn
+  const advances = unsettled.paid
+  const prepaidTax = inv.pph
+  // Out-payments include those on advances; the paid part of advances without LPJ is in assets, not payables.
+  const payables = opening.payables + out.total + tax.total + (t('adv').total - unsettled.total) - (cashOut - unsettled.paid)
+  const taxPayable = opening.taxPayable + inv.ppn - out.ppn + out.pph + (payroll?.tax ?? 0) - tax.total
+  const profit = pnl.totals.netProfit + unsettled.total
+  const assets = [
+    { key: 'cash', label: 'Cash & bank', amount: cash },
+    { key: 'receivables', label: 'Accounts receivable (unpaid invoices)', amount: receivables },
+    { key: 'advances', label: 'Cash advances without LPJ yet', amount: advances },
+    { key: 'prepaidTax', label: 'Prepaid tax (PPh withheld by clients)', amount: prepaidTax },
+    { key: 'otherAssets', label: 'Other assets (from opening)', amount: opening.otherAssets },
+  ]
+  const liabilities = [
+    { key: 'payables', label: 'Accounts payable (unpaid bills)', amount: payables },
+    { key: 'taxPayable', label: 'Tax & BPJS payable', amount: taxPayable },
+    { key: 'otherLiabilities', label: 'Other liabilities (from opening)', amount: opening.otherLiabilities },
+  ]
+  const equity = [
+    { key: 'shareCapital', label: 'Share capital', amount: opening.shareCapital },
+    { key: 'retainedEarnings', label: `Retained earnings to ${o}`, amount: opening.retainedEarnings },
+    { key: 'profit', label: `Profit ${nextDay(o)} to ${d}`, amount: profit },
+  ]
+  const sum = (xs: { amount: number }[]) => xs.reduce((a, x) => a + x.amount, 0)
+  const totalAssets = sum(assets)
+  const totalLiabilities = sum(liabilities)
+  const totalEquity = sum(equity)
+  const openingGap =
+    opening.cash + opening.receivables + opening.otherAssets - (opening.payables + opening.taxPayable + opening.otherLiabilities + opening.shareCapital + opening.retainedEarnings)
+  return {
+    asOf: d,
+    opening,
+    assets,
+    liabilities,
+    equity,
+    totals: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity, difference: totalAssets - totalLiabilities - totalEquity },
+    openingGap,
+    notes: { pnlNetProfit: pnl.totals.netProfit, advancesWithoutLpj: unsettled.total, payrollNetSalary: payroll?.net ?? 0, uncategorised: pnl.uncategorised },
+  }
+}
+
+const nextDay = (date: string) => new Date(new Date(date + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
 
 // ------------------------------------------------------------------ tax payments and tax due
 

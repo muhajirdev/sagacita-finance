@@ -58,6 +58,7 @@ import {
   recordMedicalClaim,
   MEDICAL_TYPES,
   pnlByAccount,
+  balanceSheet,
   createCompany,
   updateCompany,
   createDivision,
@@ -394,6 +395,17 @@ function createServer(env: Env, appUrl: string) {
       inputSchema: { companyId: z.number().int(), year: z.number().int() },
     },
     async ({ companyId, year }) => safe(() => pnlByAccount(env.DB, companyId, year)),
+  )
+
+  server.registerTool(
+    'balance_sheet',
+    {
+      description:
+        'Balance sheet of a PT as of a date: cash & bank, receivables, advances without LPJ, prepaid tax, payables, tax payable, equity. ' +
+        'Starts from the opening balances finance entered on the Balance Sheet page and adds what was recorded after. Read-only.',
+      inputSchema: { companyId: z.number().int(), asOf: z.string().describe('YYYY-MM-DD') },
+    },
+    async ({ companyId, asOf }) => safe(() => balanceSheet(env.DB, companyId, asOf)),
   )
 
   server.registerTool(

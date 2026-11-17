@@ -434,3 +434,24 @@ export const payrollMonths = sqliteTable(
   (t) => [uniqueIndex('payroll_period_division').on(t.period, t.divisionId)],
 )
 
+
+/**
+ * Opening balance sheet of a PT, entered by finance (one row per PT). The Balance Sheet page starts from these
+ * figures as of `as_of` and adds what the app recorded after that date.
+ */
+export const openingBalances = sqliteTable('opening_balances', {
+  companyId: integer('company_id')
+    .primaryKey()
+    .references(() => companies.id),
+  asOf: text('as_of').notNull(), // YYYY-MM-DD
+  cash: integer('cash').notNull().default(0),
+  receivables: integer('receivables').notNull().default(0),
+  otherAssets: integer('other_assets').notNull().default(0),
+  payables: integer('payables').notNull().default(0),
+  taxPayable: integer('tax_payable').notNull().default(0),
+  otherLiabilities: integer('other_liabilities').notNull().default(0),
+  shareCapital: integer('share_capital').notNull().default(0),
+  retainedEarnings: integer('retained_earnings').notNull().default(0),
+  updatedBy: text('updated_by'),
+  updatedAt: text('updated_at'),
+})
