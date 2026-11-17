@@ -72,7 +72,7 @@ const GLOSSARY = `Talk to people in the web app's words, not the database's. Dat
   parties -> clients, vendors or employees (by kind). The client list page is "Client List".
   client_invoice -> "Invoice" (Invoicing page). dpp -> "net, before VAT". ppn -> "VAT 11%". pph -> "PPh" (23, 4(2), 26).
   vendor_bill -> "Vendor invoice" / "Expense". cash_advance -> "Cash advance". reimbursement -> "Reimbursement".
-  Expense stages: draft -> "Advance Request", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
+  Expense stages: draft -> "Waiting approval", approved + unpaid -> "Approved", fully paid -> "Paid", settled -> "Done Settlement".
   settlement -> "LPJ" / "Settlement" (the report closing a cash advance). lpj_links -> "LPJ link" (secret no-login page where the advance holder fills the LPJ; submitted_at set = "LPJ submitted, waiting finance review"). lpj_due -> "LPJ deadline" (5 working days after the advance is paid).
   Invoice stages: unpaid -> "Sent to client", part paid -> "Part paid", past due -> "Overdue", paid -> "Paid".
   payroll_months -> "Employee OpEx". opex_budgets -> "Internal OpEx" (was Company OpEx). divisions -> agencies. companies -> PTs.
