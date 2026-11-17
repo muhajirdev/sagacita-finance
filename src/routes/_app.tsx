@@ -11,6 +11,7 @@ import {
   IconContacts,
   IconFolder,
   IconGauge,
+  IconHistory,
   IconHome,
   IconKey,
   IconList,
@@ -55,6 +56,7 @@ const NAV = [
   { section: 'People & Costs', to: '/compopex', label: 'Company OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },
   { section: 'Admin', to: '/clients', label: 'Client List', icon: IconContacts, roles: ['owner', 'finance', 'admin'] },
   { section: 'Admin', to: '/users', label: 'User Management', icon: IconKey, roles: ['owner'] },
+  { section: 'Admin', to: '/logs', label: 'Logs', icon: IconHistory, roles: ['owner'] },
 ] as const
 
 function NavList({ role, onPick }: { role: Role; onPick?: () => void }) {

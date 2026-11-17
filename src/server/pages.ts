@@ -11,7 +11,10 @@ import { getDb } from '#/lib/db'
 import {
   deleteBudgetLine,
   ensureParty,
+  listActivity,
   listDivisions,
+  log,
+  recordPayroll,
   listParties,
   listProjects,
   listTransactions,
@@ -244,13 +247,8 @@ export const savePayrollFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data }) => {
-    await requireRole('owner', 'hr')
-    const db = getDb()
-    const values = { ...data, headcount: data.headcount ?? null }
-    await db
-      .insert(payrollMonths)
-      .values(values)
-      .onConflictDoUpdate({ target: [payrollMonths.period, payrollMonths.divisionId], set: values })
+    const user = await requireRole('owner', 'hr')
+    await recordPayroll(getDb(), user.email, data)
     return { ok: true }
   })
 
@@ -332,11 +330,15 @@ export const setRoleFn = createServerFn({ method: 'POST' })
 export const addUserFn = createServerFn({ method: 'POST' })
   .validator(z.object({ email: z.string().email(), name: z.string().min(1), role: z.enum(USER_ROLES), password: z.string().min(8) }))
   .handler(async ({ data }) => {
-    await requireRole('owner')
+    const me = await requireRole('owner')
     const db = getDb()
     const email = data.email.toLowerCase()
     if (await db.select().from(users).where(eq(users.email, email)).get()) throw new Error('That email already has an account')
-    await db.insert(users).values({ email, name: data.name, role: data.role, passwordHash: await hashPassword(data.password) })
+    const [row] = await db
+      .insert(users)
+      .values({ email, name: data.name, role: data.role, passwordHash: await hashPassword(data.password) })
+      .returning({ id: users.id })
+    await log(db, me.email, 'create', 'users', row.id, { email, role: data.role })
     return { ok: true }
   })
 
@@ -348,10 +350,30 @@ export const divisionsList = createServerFn().handler(async () => {
 export const resetPasswordFn = createServerFn({ method: 'POST' })
   .validator(z.object({ id: z.number().int(), password: z.string().min(8) }))
   .handler(async ({ data }) => {
-    await requireRole('owner')
-    await getDb()
+    const me = await requireRole('owner')
+    const db = getDb()
+    await db
       .update(users)
       .set({ passwordHash: await hashPassword(data.password) })
       .where(eq(users.id, data.id))
+    await log(db, me.email, 'reset_password', 'users', data.id)
     return { ok: true }
+  })
+
+// ------------------------------------------------------------ audit log (owner)
+
+export const getActivity = createServerFn()
+  .validator(
+    z.object({
+      entity: z.string().optional(),
+      source: z.enum(['web', 'mcp', 'import']).optional(),
+      actor: z.string().optional(),
+      batchId: z.string().optional(),
+      before: z.number().int().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await requireRole('owner')
+    const rows = await listActivity(getDb(), { ...data, limit: 100 })
+    return rows.map((r) => ({ ...r, data: r.data == null ? null : JSON.stringify(r.data) }))
   })
