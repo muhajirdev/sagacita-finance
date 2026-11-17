@@ -1172,7 +1172,17 @@ export function taxDeadline(period: string, type: TaxType) {
   return `${ny}-${mm}-15`
 }
 
-export type TaxDueRow = { period: string; type: TaxType; owed: number; paid: number; due: number; deadline: string }
+export type TaxDueRow = {
+  period: string
+  type: TaxType
+  owed: number
+  paid: number
+  due: number
+  deadline: string
+  /** PPh 21 only: owed from payroll (employees) vs withheld on vendor / freelancer bills. Filed together in one SPT. */
+  employee?: number
+  vendor?: number
+}
 
 /**
  * Tax owed vs deposited per tax month for one PT. Owed comes from the books:
@@ -1197,7 +1207,11 @@ export async function taxDue(d1: D1Database, companyId: number, year: number): P
     )
     .bind(companyId, y)
     .all<{ period: string; pph_type: TaxType; v: number }>()
-  for (const r of pph.results) add(r.period, r.pph_type, r.v)
+  const pph21 = new Map<string, { employee: number; vendor: number }>()
+  for (const r of pph.results) {
+    add(r.period, r.pph_type, r.v)
+    if (r.pph_type === 'pph21') pph21.set(r.period, { employee: 0, vendor: r.v })
+  }
   const ppn = await d1
     .prepare(
       `select substr(issue_date, 1, 7) period, sum(case when direction = 'in' then ppn else -ppn end) v from transactions
@@ -1213,7 +1227,12 @@ export async function taxDue(d1: D1Database, companyId: number, year: number): P
     )
     .bind(companyId, y)
     .all<{ period: string; pph21: number; bpjs_tk: number; bpjs_kes: number }>()
-  for (const r of pay.results) (add(r.period, 'pph21', r.pph21), add(r.period, 'bpjs_tk', r.bpjs_tk), add(r.period, 'bpjs_kes', r.bpjs_kes))
+  for (const r of pay.results) {
+    add(r.period, 'pph21', r.pph21)
+    add(r.period, 'bpjs_tk', r.bpjs_tk)
+    add(r.period, 'bpjs_kes', r.bpjs_kes)
+    if (r.pph21) pph21.set(r.period, { vendor: pph21.get(r.period)?.vendor ?? 0, employee: r.pph21 })
+  }
   const paid = await d1
     .prepare(
       `select t.tax_period period, t.category type, sum(t.total) v from transactions t
@@ -1228,7 +1247,7 @@ export async function taxDue(d1: D1Database, companyId: number, year: number): P
       const [period, type] = k.split('|') as [string, TaxType]
       const o = owed.get(k) ?? 0
       const p = paidMap.get(k) ?? 0
-      return { period, type, owed: o, paid: p, due: o - p, deadline: taxDeadline(period, type) }
+      return { period, type, owed: o, paid: p, due: o - p, deadline: taxDeadline(period, type), ...(type === 'pph21' ? pph21.get(period) : {}) }
     })
     .sort((a, b) => a.period.localeCompare(b.period) || a.type.localeCompare(b.type))
 }

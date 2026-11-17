@@ -35,7 +35,8 @@ function Tax() {
   const d = Route.useLoaderData()
   const navigate = Route.useNavigate()
   const router = useRouter()
-  const types = TAX_TYPES.filter((t) => d.rows.some((r) => r.type === t))
+  const always = ['pph21', 'pph23', 'pph4_2', 'pph26', 'ppn']
+  const types = TAX_TYPES.filter((t) => always.includes(t) || d.rows.some((r) => r.type === t))
   const cell = (period: string, type: string) => d.rows.find((r) => r.period === period && r.type === type)
   const periods = [...new Set(d.rows.map((r) => r.period))].sort()
   const open = d.rows.filter((r) => r.due > 0 && r.type !== 'ppn')
@@ -161,6 +162,14 @@ function Tax() {
                   return (
                     <td key={t} className="td num">
                       <div title="Owed from the books">{rp(c.owed)}</div>
+                      {c.type === 'pph21' && (c.employee ?? 0) > 0 && (c.vendor ?? 0) > 0 && (
+                        <div className="text-[11px] text-muted">
+                          employees {rp(c.employee ?? 0)} · vendors {rp(c.vendor ?? 0)}
+                        </div>
+                      )}
+                      {c.type === 'pph21' && !((c.employee ?? 0) > 0 && (c.vendor ?? 0) > 0) && (
+                        <div className="text-[11px] text-muted">{(c.employee ?? 0) > 0 ? 'employees' : 'vendors'}</div>
+                      )}
                       <div className={`text-[12px] ${bad ? (c.deadline < d.today ? 'text-bad' : 'text-warn') : 'text-muted'}`}>
                         {c.type === 'ppn'
                           ? c.owed < 0
