@@ -278,7 +278,10 @@ export const documents = sqliteTable(
 
 // ---------------------------------------------------------------- audit
 
-/** Who changed what, from where. Written by every mutation (web and MCP). */
+/**
+ * Audit log: who changed what, when, and from where. Written by every mutation through log() in
+ * lib/finance.ts. source comes from the Db handle (see getDb); batch_id groups rows of one import.
+ */
 export const activityLog = sqliteTable(
   'activity_log',
   {
@@ -288,9 +291,13 @@ export const activityLog = sqliteTable(
     action: text('action').notNull(), // create / update / delete / pay
     entity: text('entity').notNull(), // table name
     entityId: integer('entity_id').notNull(),
-    data: text('data', { mode: 'json' }),
+    data: text('data', { mode: 'json' }), // the new row, or { before, after } / the changed fields
+    source: text('source', { enum: ['web', 'mcp', 'import'] })
+      .notNull()
+      .default('web'),
+    batchId: text('batch_id'), // one id per import run, so a whole import can be reviewed or undone
   },
-  (t) => [index('activity_entity').on(t.entity, t.entityId)],
+  (t) => [index('activity_entity').on(t.entity, t.entityId), index('activity_at').on(t.at)],
 )
 
 /**

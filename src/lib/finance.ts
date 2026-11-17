@@ -3,7 +3,7 @@
  * Every write goes through here so tax math, budget checks and the activity log
  * are the same no matter who calls.
  */
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 
 import {
   documents,
@@ -26,7 +26,7 @@ import {
   type TRANSACTION_STATUSES,
 } from '#/db/schema'
 import { hashPassword } from '#/lib/auth'
-import type { Db } from '#/lib/db'
+import { auditSource, type Db } from '#/lib/db'
 import { computeTax, type PphType } from '#/lib/tax'
 
 export type Actor = string
@@ -38,8 +38,30 @@ export class FinanceError extends Error {}
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-async function log(db: Db, actor: Actor, action: string, entity: string, entityId: number, data?: unknown) {
-  await db.insert(activityLog).values({ actor, action, entity, entityId, data: data ?? null })
+/** Writes one audit row. Source (web / mcp / import) and import batch come from the Db handle. */
+export async function log(db: Db, actor: Actor, action: string, entity: string, entityId: number, data?: unknown) {
+  const { source, batchId } = auditSource(db)
+  await db.insert(activityLog).values({ actor, action, entity, entityId, data: data ?? null, source, batchId: batchId ?? null })
+}
+
+/** The audit log, newest first, for the Logs page. */
+export async function listActivity(
+  db: Db,
+  f: { entity?: string; source?: 'web' | 'mcp' | 'import'; actor?: string; batchId?: string; before?: number; limit?: number } = {},
+) {
+  const where = and(
+    f.entity ? eq(activityLog.entity, f.entity) : undefined,
+    f.source ? eq(activityLog.source, f.source) : undefined,
+    f.actor ? sql`lower(${activityLog.actor}) like ${'%' + f.actor.toLowerCase() + '%'}` : undefined,
+    f.batchId ? eq(activityLog.batchId, f.batchId) : undefined,
+    f.before ? lt(activityLog.id, f.before) : undefined,
+  )
+  return db
+    .select()
+    .from(activityLog)
+    .where(where)
+    .orderBy(desc(activityLog.id))
+    .limit(f.limit ?? 100)
 }
 
 // ------------------------------------------------------------------ lookups

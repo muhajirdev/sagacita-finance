@@ -83,7 +83,7 @@ Tables:
   approvals     approval queue: entity (project|transaction), entity_id, status (pending|approved|rejected), summary, amount,
                 requested_by, created_at, decided_by, decided_at, note. Project = its budget before it runs. Transaction = outgoing spend.
   documents     files in R2: entity (transaction|party|project), entity_id, kind, filename, content_type, size. URL = <app>/files/<id>
-  activity_log  who changed what: at, actor, action, entity, entity_id, data (json)
+  activity_log  audit log, who changed what: at, actor, action, entity, entity_id, data (json), source (web|mcp|import), batch_id
   payroll_months Employee OpEx: period (YYYY-MM), division_id, net_salary, bpjs_tk, bpjs_kes (company share), pph21, headcount. Cost = sum of the four.
   (users is not readable here)
 
@@ -115,7 +115,7 @@ function createServer(env: Env, appUrl: string) {
     project: (code: string) => `${appUrl}/projects/${encodeURIComponent(code)}`,
     payables: (dueBy: string) => `${appUrl}/payables?dueBy=${dueBy}`,
   }
-  const db = getDb(env.DB)
+  const db = getDb(env.DB, { source: 'mcp' })
   const server = new McpServer({ name: 'sagacita-finance', version: '1.0.0' }, { instructions: GLOSSARY })
 
   server.registerTool(
