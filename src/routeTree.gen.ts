@@ -20,11 +20,13 @@ import { Route as AppCashflowRouteImport } from './routes/_app/cashflow'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppCompaniesRouteImport } from './routes/_app/companies'
 import { Route as AppCompopexRouteImport } from './routes/_app/compopex'
+import { Route as AppEmployeesRouteImport } from './routes/_app/employees'
 import { Route as AppEmpopexRouteImport } from './routes/_app/empopex'
 import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
 import { Route as AppInvoicingRouteImport } from './routes/_app/invoicing'
 import { Route as AppLedgerRouteImport } from './routes/_app/ledger'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
+import { Route as AppMedicalRouteImport } from './routes/_app/medical'
 import { Route as AppPayablesRouteImport } from './routes/_app/payables'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
 import { Route as AppPnlRouteImport } from './routes/_app/pnl'
@@ -90,6 +92,11 @@ const AppCompopexRoute = AppCompopexRouteImport.update({
   path: '/compopex',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEmployeesRoute = AppEmployeesRouteImport.update({
+  id: '/employees',
+  path: '/employees',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEmpopexRoute = AppEmpopexRouteImport.update({
   id: '/empopex',
   path: '/empopex',
@@ -113,6 +120,11 @@ const AppLedgerRoute = AppLedgerRouteImport.update({
 const AppLogsRoute = AppLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMedicalRoute = AppMedicalRouteImport.update({
+  id: '/medical',
+  path: '/medical',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPayablesRoute = AppPayablesRouteImport.update({
@@ -177,11 +189,13 @@ export interface FileRoutesByFullPath {
   '/clients': typeof AppClientsRoute
   '/companies': typeof AppCompaniesRoute
   '/compopex': typeof AppCompopexRoute
+  '/employees': typeof AppEmployeesRoute
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
   '/invoicing': typeof AppInvoicingRoute
   '/ledger': typeof AppLedgerRoute
   '/logs': typeof AppLogsRoute
+  '/medical': typeof AppMedicalRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
   '/pnl': typeof AppPnlRoute
@@ -203,11 +217,13 @@ export interface FileRoutesByTo {
   '/clients': typeof AppClientsRoute
   '/companies': typeof AppCompaniesRoute
   '/compopex': typeof AppCompopexRoute
+  '/employees': typeof AppEmployeesRoute
   '/empopex': typeof AppEmpopexRoute
   '/expenses': typeof AppExpensesRoute
   '/invoicing': typeof AppInvoicingRoute
   '/ledger': typeof AppLedgerRoute
   '/logs': typeof AppLogsRoute
+  '/medical': typeof AppMedicalRoute
   '/payables': typeof AppPayablesRoute
   '/performance': typeof AppPerformanceRoute
   '/pnl': typeof AppPnlRoute
@@ -232,11 +248,13 @@ export interface FileRoutesById {
   '/_app/clients': typeof AppClientsRoute
   '/_app/companies': typeof AppCompaniesRoute
   '/_app/compopex': typeof AppCompopexRoute
+  '/_app/employees': typeof AppEmployeesRoute
   '/_app/empopex': typeof AppEmpopexRoute
   '/_app/expenses': typeof AppExpensesRoute
   '/_app/invoicing': typeof AppInvoicingRoute
   '/_app/ledger': typeof AppLedgerRoute
   '/_app/logs': typeof AppLogsRoute
+  '/_app/medical': typeof AppMedicalRoute
   '/_app/payables': typeof AppPayablesRoute
   '/_app/performance': typeof AppPerformanceRoute
   '/_app/pnl': typeof AppPnlRoute
@@ -262,11 +280,13 @@ export interface FileRouteTypes {
     | '/clients'
     | '/companies'
     | '/compopex'
+    | '/employees'
     | '/empopex'
     | '/expenses'
     | '/invoicing'
     | '/ledger'
     | '/logs'
+    | '/medical'
     | '/payables'
     | '/performance'
     | '/pnl'
@@ -288,11 +308,13 @@ export interface FileRouteTypes {
     | '/clients'
     | '/companies'
     | '/compopex'
+    | '/employees'
     | '/empopex'
     | '/expenses'
     | '/invoicing'
     | '/ledger'
     | '/logs'
+    | '/medical'
     | '/payables'
     | '/performance'
     | '/pnl'
@@ -316,11 +338,13 @@ export interface FileRouteTypes {
     | '/_app/clients'
     | '/_app/companies'
     | '/_app/compopex'
+    | '/_app/employees'
     | '/_app/empopex'
     | '/_app/expenses'
     | '/_app/invoicing'
     | '/_app/ledger'
     | '/_app/logs'
+    | '/_app/medical'
     | '/_app/payables'
     | '/_app/performance'
     | '/_app/pnl'
@@ -420,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompopexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/employees': {
+      id: '/_app/employees'
+      path: '/employees'
+      fullPath: '/employees'
+      preLoaderRoute: typeof AppEmployeesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/empopex': {
       id: '/_app/empopex'
       path: '/empopex'
@@ -453,6 +484,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/logs'
       preLoaderRoute: typeof AppLogsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/medical': {
+      id: '/_app/medical'
+      path: '/medical'
+      fullPath: '/medical'
+      preLoaderRoute: typeof AppMedicalRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/payables': {
@@ -536,11 +574,13 @@ interface AppRouteChildren {
   AppClientsRoute: typeof AppClientsRoute
   AppCompaniesRoute: typeof AppCompaniesRoute
   AppCompopexRoute: typeof AppCompopexRoute
+  AppEmployeesRoute: typeof AppEmployeesRoute
   AppEmpopexRoute: typeof AppEmpopexRoute
   AppExpensesRoute: typeof AppExpensesRoute
   AppInvoicingRoute: typeof AppInvoicingRoute
   AppLedgerRoute: typeof AppLedgerRoute
   AppLogsRoute: typeof AppLogsRoute
+  AppMedicalRoute: typeof AppMedicalRoute
   AppPayablesRoute: typeof AppPayablesRoute
   AppPerformanceRoute: typeof AppPerformanceRoute
   AppPnlRoute: typeof AppPnlRoute
@@ -561,11 +601,13 @@ const AppRouteChildren: AppRouteChildren = {
   AppClientsRoute: AppClientsRoute,
   AppCompaniesRoute: AppCompaniesRoute,
   AppCompopexRoute: AppCompopexRoute,
+  AppEmployeesRoute: AppEmployeesRoute,
   AppEmpopexRoute: AppEmpopexRoute,
   AppExpensesRoute: AppExpensesRoute,
   AppInvoicingRoute: AppInvoicingRoute,
   AppLedgerRoute: AppLedgerRoute,
   AppLogsRoute: AppLogsRoute,
+  AppMedicalRoute: AppMedicalRoute,
   AppPayablesRoute: AppPayablesRoute,
   AppPerformanceRoute: AppPerformanceRoute,
   AppPnlRoute: AppPnlRoute,
