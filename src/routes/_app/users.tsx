@@ -15,7 +15,7 @@ const ROLE_HELP: Record<string, string> = {
   owner: 'Everything, including payroll, approvals and users',
   finance: 'Projects, budgets, invoicing, expenses, reports',
   admin: 'Projects, budget control, expenses, clients',
-  hr: 'Employee OpEx and Internal OpEx',
+  hr: 'Employees, Payroll and Medical',
 }
 
 function Users() {

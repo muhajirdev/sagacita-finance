@@ -347,7 +347,7 @@ export const acknowledgeSpendFn = createServerFn({ method: 'POST' })
   .validator(z.object({ id: z.number().int(), payDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
   .handler(async ({ data }) => {
     const user = await requireUser()
-    if (user.role !== 'finance' && user.role !== 'owner') throw new Error('Only the finance PIC can acknowledge spend')
+    if (user.role !== 'finance' && user.role !== 'owner') throw new Error('Only Finance can acknowledge spend')
     return acknowledgeSpend(getDb(), user.email, data.id, data.payDate)
   })
 

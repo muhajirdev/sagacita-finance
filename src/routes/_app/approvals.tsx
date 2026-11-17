@@ -55,7 +55,7 @@ function Approvals() {
     <>
       <PageHeader
         title="Approvals"
-        sub="Budgets are approved by the owner. Spend goes: team submits, finance PIC acknowledges and sets a pay date, BOD releases."
+        sub="Budgets are approved by the owner. Spend goes: team submits, Finance acknowledges and sets a pay date, BOD releases."
         right={
           <div className="inline-flex rounded-full bg-black/[0.05] p-0.5">
             {(['pending', 'approved', 'rejected'] as const).map((s) => (
@@ -85,7 +85,7 @@ function Approvals() {
                 <div className="mt-1 text-[12px] text-muted">
                   {a.acknowledgedAt
                     ? `Finance acknowledged (${a.acknowledgedBy}), pay on ${a.payDate}. Waiting for BOD release.`
-                    : 'Waiting for finance PIC to acknowledge and set a pay date.'}
+                    : 'Waiting for Finance to acknowledge and set a pay date.'}
                 </div>
               )}
               {a.note && <div className="mt-0.5 text-[12px] text-muted">Note: {a.note}</div>}

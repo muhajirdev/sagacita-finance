@@ -719,7 +719,7 @@ export async function setTransactionStatus(db: Db, actor: Actor, id: number, sta
       .get()
     if (pending)
       throw new FinanceError(
-        `this expense is waiting in Approvals (#${pending.id}): finance PIC acknowledges and sets a pay date, then BOD releases it`,
+        `this expense is waiting in Approvals (#${pending.id}): Finance acknowledges and sets a pay date, then BOD releases it`,
       )
   }
   const [row] = await db
@@ -1521,7 +1521,7 @@ export async function submitBudget(db: Db, actor: Actor, project: string | numbe
 }
 
 /** Approve: transaction -> approved, project -> active. Reject: transaction -> void, project stays draft. */
-/** Spend flow step 2+3: finance PIC acknowledges a spend request and proposes when to pay it. */
+/** Spend flow step 2+3: Finance acknowledges a spend request and proposes when to pay it. */
 export async function acknowledgeSpend(db: Db, actor: Actor, id: number, payDate: string) {
   const a = await db.select().from(approvals).where(eq(approvals.id, id)).get()
   if (!a || a.entity !== 'transaction') throw new FinanceError(`spend approval ${id} not found`)
@@ -1542,7 +1542,7 @@ export async function decideApproval(db: Db, actor: Actor, id: number, decision:
   if (!a) throw new FinanceError(`approval ${id} not found`)
   if (a.status !== 'pending') throw new FinanceError(`approval ${id} is already ${a.status} by ${a.decidedBy}`)
   if (decision === 'approve' && a.entity === 'transaction' && !a.acknowledgedAt)
-    throw new FinanceError(`approval ${id} needs the finance PIC to acknowledge it and set a pay date before BOD can release it`)
+    throw new FinanceError(`approval ${id} needs Finance to acknowledge it and set a pay date before BOD can release it`)
   const status = decision === 'approve' ? 'approved' : 'rejected'
   const [row] = await db
     .update(approvals)
