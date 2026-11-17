@@ -354,13 +354,13 @@ function createServer(env: Env, appUrl: string) {
     'record_medical_claim',
     {
       description:
-        "HR files an employee's medical reimbursement (rawat jalan etc). Saved as a reimbursement to that employee on the Medical COA, " +
+        "HR files an employee's medical reimbursement (outpatient, inpatient, dental, vision; one yearly ceiling per employee covers all four). Saved as a reimbursement to that employee on the Medical COA, " +
         'waits for approval like any expense, then is paid in the payment run. Refused if it exceeds the employee\'s yearly medical balance (employees.medical_limit). employeeId from query on employees. Confirm first.',
       inputSchema: {
         actor: actorField,
         employeeId: z.number().int(),
         amount: z.number().positive(),
-        type: z.enum(MEDICAL_TYPES).optional().describe('Default Lainnya'),
+        type: z.enum(MEDICAL_TYPES).optional().describe('Default Outpatient'),
         date: z.string().optional().describe('Receipt date YYYY-MM-DD, default today'),
         description: z.string().optional().describe('e.g. "Klinik X, rawat jalan 3 Nov"'),
       },
