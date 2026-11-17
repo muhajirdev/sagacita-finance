@@ -142,7 +142,7 @@ function EmployeeOpex() {
       </div>
       <p className="mt-3 text-[12px] text-muted">Division columns are net salary. BPJS and PPh are the company totals across divisions. HR enters each month, the BOD approves it, and an approved month is locked.</p>
 
-      <MedicalClaims claims={claims} employees={employees} year={year} />
+      <MedicalClaims data={claims} employees={employees} year={year} />
       <Employees employees={employees} divisions={divisions} />
 
       {open && (
@@ -398,16 +398,42 @@ function Employees({ employees, divisions }: { employees: Employee[]; divisions:
   )
 }
 
-function MedicalClaims({
-  claims,
-  employees,
-  year,
-}: {
-  claims: Awaited<ReturnType<typeof getMedicalClaims>>
-  employees: Employee[]
-  year: number
-}) {
+const MEDICAL_TYPES = ['Rawat jalan', 'Rawat inap', 'Kacamata', 'Lainnya']
+
+function MedicalClaims({ data, employees, year }: { data: Awaited<ReturnType<typeof getMedicalClaims>>; employees: Employee[]; year: number }) {
   const router = useRouter()
+  const { claims, usage } = data
+  const use = new Map(usage.map((u) => [u.party, u]))
+  const balances = employees
+    .filter((e) => !e.endDate || e.medicalLimit != null || use.has(e.name))
+    .map((e) => {
+      const u = use.get(e.name)
+      const used = u?.used ?? 0
+      const pending = u?.pending ?? 0
+      return { e, used, pending, left: e.medicalLimit == null ? null : e.medicalLimit - used - pending }
+    })
+  const setLimit = async (e: Employee) => {
+    const v = await ui.prompt(`Medical allowance for ${e.name}`, [
+      {
+        name: 'limit',
+        label: 'Yearly limit (IDR)',
+        type: 'number',
+        min: 0,
+        required: false,
+        defaultValue: e.medicalLimit == null ? '' : String(e.medicalLimit),
+        hint: 'Leave empty for no limit',
+      },
+    ])
+    if (!v) return
+    const { id, createdAt: _c, updatedAt: _u, ...rest } = e
+    if (
+      await ui.run(
+        () => saveEmployeeFn({ data: { ...rest, id, medicalLimit: v.limit === '' ? null : Number(v.limit) } }),
+        'Medical allowance saved',
+      )
+    )
+      await router.invalidate()
+  }
   const state = (c: (typeof claims)[number]) =>
     c.status === 'draft' ? (
       <span className="pill-warn">Waiting approval</span>
@@ -434,6 +460,7 @@ function MedicalClaims({
                   type: 'select',
                   options: employees.filter((e) => !e.endDate).map((e) => ({ value: String(e.id), label: e.name })),
                 },
+                { name: 'type', label: 'Type', type: 'select', options: MEDICAL_TYPES.map((t) => ({ value: t, label: t })) },
                 { name: 'amount', label: 'Amount on the receipt (IDR)', type: 'number', min: 1 },
                 { name: 'date', label: 'Receipt date', type: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
                 { name: 'description', label: 'Clinic / note', required: false },
@@ -444,7 +471,7 @@ function MedicalClaims({
             if (
               await ui.run(
                 () =>
-                  medicalClaimFn({ data: { employeeId: Number(v.employeeId), amount: Number(v.amount), date: v.date, description: v.description } }),
+                  medicalClaimFn({ data: { employeeId: Number(v.employeeId), type: v.type, amount: Number(v.amount), date: v.date, description: v.description } }),
                 'Claim submitted for approval',
               )
             )
@@ -453,6 +480,41 @@ function MedicalClaims({
         >
           + Medical claim
         </button>
+      </div>
+      <div className="card mb-4 overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="th">Employee</th>
+              <th className="th num">Yearly limit</th>
+              <th className="th num">Used (approved)</th>
+              <th className="th num">Waiting approval</th>
+              <th className="th num">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {balances.map(({ e, used, pending, left }) => (
+              <tr key={e.id}>
+                <td className="td">{e.name}</td>
+                <td className="td num">
+                  <button className="tabular-nums hover:text-accent" title="Change limit" onClick={() => setLimit(e)}>
+                    {e.medicalLimit == null ? <span className="text-accent">+ Set</span> : rp(e.medicalLimit)}
+                  </button>
+                </td>
+                <td className="td num">{rp(used)}</td>
+                <td className="td num text-muted">{pending ? rp(pending) : '—'}</td>
+                <td className={`td num font-medium ${left != null && left < 0 ? 'text-bad' : ''}`}>{left == null ? '—' : rp(left)}</td>
+              </tr>
+            ))}
+            {balances.length === 0 && (
+              <tr>
+                <td className="td text-muted" colSpan={5}>
+                  No employees yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
       <div className="card overflow-x-auto">
         <table className="table">
@@ -470,7 +532,7 @@ function MedicalClaims({
               <tr key={c.id}>
                 <td className="td whitespace-nowrap">{c.issue_date}</td>
                 <td className="td">{c.party ?? '—'}</td>
-                <td className="td text-ink-2">{(c.description ?? '').replace(/^Medical claim: /, '')}</td>
+                <td className="td text-ink-2">{(c.description ?? '').replace(/^Medical claim:? ?/, '')}</td>
                 <td className="td num">{rp(c.total)}</td>
                 <td className="td">{state(c)}</td>
               </tr>
