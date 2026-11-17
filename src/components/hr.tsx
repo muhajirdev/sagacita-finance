@@ -102,6 +102,7 @@ export function Employees({ employees, divisions }: { employees: Employee[]; div
                       startDate: s('startDate'),
                       endDate: s('endDate'),
                       notes: s('notes'),
+                      medicalLimit: s('medicalLimit') ? Number(s('medicalLimit')) : null,
                     },
                   })
                 if (file instanceof File && file.size > 0) {
@@ -173,6 +174,17 @@ export function Employees({ employees, divisions }: { employees: Employee[]; div
             <label className="field">
               BPJS Kesehatan no.
               <input className="input" name="bpjsKesNo" defaultValue={edit.bpjsKesNo ?? ''} />
+            </label>
+            <label className="field">
+              Medical ceiling (yearly)
+              <input
+                className="input"
+                name="medicalLimit"
+                type="number"
+                min="0"
+                defaultValue={edit.medicalLimit ?? ''}
+                placeholder="Empty = no limit"
+              />
             </label>
             <label className="field sm:col-span-2">
               Address
