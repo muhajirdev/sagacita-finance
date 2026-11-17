@@ -20,6 +20,7 @@ import { getLpjSubmissions, lpjLinkFn, settleFromLpjFn } from '#/server/lpj'
 import type { LpjItem } from '#/lib/lpj'
 import { Select, ui } from '#/components/dialogs'
 import { FilterBar } from '#/components/filter-bar'
+import { needsRelease } from '#/components/transactions'
 import { VendorPicker } from '#/components/vendor-picker'
 import { filterSearch, pickFilters } from '#/lib/filters'
 
@@ -229,7 +230,12 @@ function Expenses() {
                         In Approvals
                       </Link>
                     )}
-                    {s === 'unpaid' && (
+                    {s === 'unpaid' && needsRelease(t) && (
+                      <Link to="/payables" className="btn-ghost mr-1">
+                        Waiting owner release
+                      </Link>
+                    )}
+                    {s === 'unpaid' && !needsRelease(t) && (
                       <button
                         className="btn-ghost mr-1"
                         onClick={async () => {

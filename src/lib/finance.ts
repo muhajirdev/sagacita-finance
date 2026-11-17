@@ -719,7 +719,7 @@ export async function setTransactionStatus(db: Db, actor: Actor, id: number, sta
       .get()
     if (pending)
       throw new FinanceError(
-        `this expense is waiting in Approvals (#${pending.id}): Finance acknowledges and sets a pay date, then BOD releases it`,
+        `this expense is waiting in Approvals (#${pending.id}): Finance acknowledges and sets a pay date, then the owner approves it`,
       )
   }
   const [row] = await db

@@ -55,7 +55,7 @@ function Approvals() {
     <>
       <PageHeader
         title="Approvals"
-        sub="Budgets are approved by the owner. Spend goes: team submits, Finance acknowledges and sets a pay date, BOD releases."
+        sub="Budgets are approved by the owner. Spend goes: team submits, Finance acknowledges and sets a pay date, owner approves, then on the pay date the owner releases it on Payment run."
         right={
           <div className="inline-flex rounded-full bg-black/[0.05] p-0.5">
             {(['pending', 'approved', 'rejected'] as const).map((s) => (
@@ -84,7 +84,7 @@ function Approvals() {
               {a.entity === 'transaction' && a.status === 'pending' && (
                 <div className="mt-1 text-[12px] text-muted">
                   {a.acknowledgedAt
-                    ? `Finance acknowledged (${a.acknowledgedBy}), pay on ${a.payDate}. Waiting for BOD release.`
+                    ? `Finance acknowledged (${a.acknowledgedBy}), pay on ${a.payDate}. Waiting for owner approval.`
                     : 'Waiting for Finance to acknowledge and set a pay date.'}
                 </div>
               )}
@@ -110,7 +110,7 @@ function Approvals() {
                 )}
                 {canDecide && (a.entity === 'project' || a.acknowledgedAt) && (
                   <button className="btn" onClick={() => decide(a.id, 'approve')}>
-                    {a.entity === 'project' ? 'Approve' : 'Release'}
+                    Approve
                   </button>
                 )}
               </div>
@@ -121,7 +121,7 @@ function Approvals() {
         ))}
         {approvals.length === 0 && <div className="px-5 py-8 text-center text-[13px] text-muted">Nothing {status}.</div>}
       </div>
-      {!canDecide && <p className="mt-3 text-[12px] text-muted">Only BOD (owner) can approve budgets and release spend.</p>}
+      {!canDecide && <p className="mt-3 text-[12px] text-muted">Only BOD (owner) can approve budgets and spend.</p>}
       <p className="mt-3 text-[12px] text-muted">
         Releasing spend makes it payable on the{' '}
         <Link to="/payables" className="text-accent">
