@@ -24,6 +24,7 @@ import {
   type PROJECT_TYPES,
   type TRANSACTION_KINDS,
   type TRANSACTION_STATUSES,
+  type TAX_TYPES,
 } from '#/db/schema'
 import { hashPassword } from '#/lib/auth'
 import { auditSource, type Db } from '#/lib/db'
@@ -850,6 +851,142 @@ export async function settleAdvance(
   return { advance: { ...adv, status: 'settled' as const }, lines: rows, balance: bal, spent, difference: balance }
 }
 
+// ------------------------------------------------------------------ tax payments and tax due
+
+export type TaxType = (typeof TAX_TYPES)[number]
+export const TAX_LABEL: Record<TaxType, string> = {
+  pph21: 'PPh 21',
+  pph23: 'PPh 23',
+  pph4_2: 'PPh 4(2) / final',
+  pph26: 'PPh 26',
+  ppn: 'PPN',
+  bpjs_tk: 'BPJS TK',
+  bpjs_kes: 'BPJS Kesehatan',
+}
+
+/**
+ * Records tax deposited to the tax office (or BPJS) for a tax month: a tax_payment transaction (dpp 0, so it is
+ * not a cost line twice; the withheld PPh is already inside the vendor bill) plus its payment.
+ */
+export async function recordTaxPayment(
+  db: Db,
+  actor: Actor,
+  input: {
+    companyId: number
+    taxType: TaxType
+    period: string
+    amount: number
+    date?: string
+    number?: string | null
+    description?: string | null
+    createdBy?: number | null
+  },
+) {
+  if (!/^\d{4}-\d{2}$/.test(input.period)) throw new FinanceError('period must be the tax month as YYYY-MM')
+  const amount = Math.round(input.amount)
+  if (!(amount > 0)) throw new FinanceError('amount must be more than 0')
+  if (!(await db.select().from(companies).where(eq(companies.id, input.companyId)).get())) throw new FinanceError(`company ${input.companyId} not found`)
+  const date = input.date || today()
+  const source = auditSource(db).source === 'import' ? ('import' as const) : ('web' as const)
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      kind: 'tax_payment',
+      direction: 'out',
+      status: 'approved',
+      number: input.number || null,
+      companyId: input.companyId,
+      category: input.taxType,
+      taxPeriod: input.period,
+      description: input.description || `${TAX_LABEL[input.taxType]} masa ${input.period}`,
+      issueDate: date,
+      dueDate: date,
+      dpp: 0,
+      total: amount,
+      source,
+      createdBy: input.createdBy ?? null,
+    })
+    .returning()
+  await log(db, actor, 'create', 'transactions', row.id, row)
+  const [pay] = await db
+    .insert(payments)
+    .values({ transactionId: row.id, direction: 'out', amount, date, companyId: input.companyId, createdBy: input.createdBy ?? null })
+    .returning()
+  await log(db, actor, 'pay', 'transactions', row.id, pay)
+  return { transaction: row, payment: pay }
+}
+
+/** Deposit deadline for a tax month: PPh and BPJS by the 15th of the next month, PPN by the end of the next month. */
+export function taxDeadline(period: string, type: TaxType) {
+  const [y, m] = period.split('-').map(Number)
+  const ny = m === 12 ? y + 1 : y
+  const nm = m === 12 ? 1 : m + 1
+  const mm = String(nm).padStart(2, '0')
+  if (type === 'ppn') return new Date(Date.UTC(ny, nm, 0)).toISOString().slice(0, 10)
+  return `${ny}-${mm}-15`
+}
+
+export type TaxDueRow = { period: string; type: TaxType; owed: number; paid: number; due: number; deadline: string }
+
+/**
+ * Tax owed vs deposited per tax month for one PT. Owed comes from the books:
+ *   PPh 21/23/4(2)/26 = PPh withheld on outgoing bills dated in that month (+ PPh 21 from Employee OpEx)
+ *   PPN = PPN on client invoices minus PPN on vendor bills (negative = overpaid / lebih bayar)
+ *   BPJS = company share in Employee OpEx
+ * Paid = tax_payment rows for that tax month. due = owed - paid.
+ */
+export async function taxDue(d1: D1Database, companyId: number, year: number): Promise<TaxDueRow[]> {
+  const y = String(year)
+  const owed = new Map<string, number>()
+  const add = (period: string, type: TaxType, v: number) => {
+    if (!v) return
+    const k = period + '|' + type
+    owed.set(k, (owed.get(k) ?? 0) + v)
+  }
+  const pph = await d1
+    .prepare(
+      `select substr(issue_date, 1, 7) period, pph_type, sum(pph) v from transactions
+       where company_id = ? and direction = 'out' and status != 'void' and pph > 0 and substr(issue_date, 1, 4) = ?
+       group by 1, 2`,
+    )
+    .bind(companyId, y)
+    .all<{ period: string; pph_type: TaxType; v: number }>()
+  for (const r of pph.results) add(r.period, r.pph_type, r.v)
+  const ppn = await d1
+    .prepare(
+      `select substr(issue_date, 1, 7) period, sum(case when direction = 'in' then ppn else -ppn end) v from transactions
+       where company_id = ? and status != 'void' and ppn != 0 and substr(issue_date, 1, 4) = ? group by 1`,
+    )
+    .bind(companyId, y)
+    .all<{ period: string; v: number }>()
+  for (const r of ppn.results) add(r.period, 'ppn', r.v)
+  const pay = await d1
+    .prepare(
+      `select p.period, sum(p.pph21) pph21, sum(p.bpjs_tk) bpjs_tk, sum(p.bpjs_kes) bpjs_kes from payroll_months p
+       join divisions d on d.id = p.division_id where d.company_id = ? and substr(p.period, 1, 4) = ? group by 1`,
+    )
+    .bind(companyId, y)
+    .all<{ period: string; pph21: number; bpjs_tk: number; bpjs_kes: number }>()
+  for (const r of pay.results) (add(r.period, 'pph21', r.pph21), add(r.period, 'bpjs_tk', r.bpjs_tk), add(r.period, 'bpjs_kes', r.bpjs_kes))
+  const paid = await d1
+    .prepare(
+      `select t.tax_period period, t.category type, sum(t.total) v from transactions t
+       where t.company_id = ? and t.kind = 'tax_payment' and t.status != 'void' and substr(t.tax_period, 1, 4) = ? group by 1, 2`,
+    )
+    .bind(companyId, y)
+    .all<{ period: string; type: TaxType; v: number }>()
+  const paidMap = new Map(paid.results.map((r) => [r.period + '|' + r.type, r.v]))
+  const keys = new Set([...owed.keys(), ...paidMap.keys()])
+  return [...keys]
+    .map((k) => {
+      const [period, type] = k.split('|') as [string, TaxType]
+      const o = owed.get(k) ?? 0
+      const p = paidMap.get(k) ?? 0
+      return { period, type, owed: o, paid: p, due: o - p, deadline: taxDeadline(period, type) }
+    })
+    .sort((a, b) => a.period.localeCompare(b.period) || a.type.localeCompare(b.type))
+}
+
 // ------------------------------------------------------------------ approvals
 
 const KIND_TEXT: Record<string, string> = {
@@ -858,6 +995,7 @@ const KIND_TEXT: Record<string, string> = {
   cash_advance: 'Cash advance',
   reimbursement: 'Reimbursement',
   settlement: 'Settlement',
+  tax_payment: 'Tax payment',
 }
 
 type ApprovalEntity = (typeof approvals.$inferSelect)['entity']

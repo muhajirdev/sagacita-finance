@@ -51,6 +51,7 @@ const NAV = [
   { section: 'Operations', to: '/approvals', label: 'Approvals', icon: IconCheck, roles: ['owner', 'finance', 'admin'] },
   { section: 'Reporting', to: '/performance', label: 'Performance', icon: IconChart, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/cashflow', label: 'Cash Flow', icon: IconWave, roles: ['owner', 'finance'] },
+  { section: 'Reporting', to: '/tax', label: 'Tax', icon: IconReceipt, roles: ['owner', 'finance'] },
   { section: 'Reporting', to: '/transactions', label: 'All transactions', icon: IconList, roles: ['owner', 'finance'] },
   { section: 'People & Costs', to: '/empopex', label: 'Employee OpEx', icon: IconPeople, roles: ['owner', 'hr'] },
   { section: 'People & Costs', to: '/compopex', label: 'Company OpEx', icon: IconBuilding, roles: ['owner', 'finance'] },

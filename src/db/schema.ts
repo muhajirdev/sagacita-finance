@@ -144,7 +144,11 @@ export const TRANSACTION_KINDS = [
   'cash_advance', // money out up front, settled later with receipts
   'reimbursement', // money out, paying back someone who spent their own
   'settlement', // closes a cash advance (LPJ): what was really spent, see advance_id
+  'tax_payment', // PPh / PPN / BPJS deposited to the tax office or BPJS. dpp 0 (not a cost line), total = cash paid
 ] as const
+
+/** What a tax_payment pays (stored in transactions.category). PPh final (PP 55) counts as pph4_2. */
+export const TAX_TYPES = ['pph21', 'pph23', 'pph4_2', 'pph26', 'ppn', 'bpjs_tk', 'bpjs_kes'] as const
 
 /** in for client_invoice, out for the rest. Stored so queries never need to know the kinds. */
 export const DIRECTIONS = ['in', 'out'] as const
@@ -186,6 +190,8 @@ export const transactions = sqliteTable(
      * negative = refund owed to the company.
      */
     advanceId: integer('advance_id'),
+    /** tax_payment rows: the tax month it pays for (masa pajak), YYYY-MM. */
+    taxPeriod: text('tax_period'),
     /** For rows with no project (company spend): which division it belongs to, if any. */
     divisionId: integer('division_id').references(() => divisions.id),
     /** Company OpEx category for spend that is not on a project: matches opex_budgets.category. */

@@ -160,7 +160,7 @@ export function TransactionForm({
   categories?: { id: number; category: string }[]
 }) {
   const router = useRouter()
-  const [kind, setKind] = useState<Exclude<(typeof TRANSACTION_KINDS)[number], 'settlement'>>('vendor_bill')
+  const [kind, setKind] = useState<Exclude<(typeof TRANSACTION_KINDS)[number], 'settlement' | 'tax_payment'>>('vendor_bill')
   const [msg, setMsg] = useState('')
   return (
     <form
@@ -203,7 +203,7 @@ export function TransactionForm({
         <Select
           value={kind}
           onChange={(v) => setKind(v as typeof kind)}
-          options={TRANSACTION_KINDS.filter((k) => k !== 'settlement' && (projectId || k !== 'client_invoice')).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+          options={TRANSACTION_KINDS.filter((k) => k !== 'settlement' && k !== 'tax_payment' && (projectId || k !== 'client_invoice')).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
         />
       </label>
       {projectId ? (
